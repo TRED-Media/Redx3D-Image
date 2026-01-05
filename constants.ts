@@ -9,13 +9,28 @@ const EST_OUTPUT_TOKENS_PER_IMAGE = 1024;
 const EST_VIDEO_INPUT_TOKENS = 2000;
 const EST_VIDEO_OUTPUT_TOKENS_PER_SEC = 1500;
 
+// SAFETY MARGIN: Increase all prices by 20% to account for variance/hidden tokens
+const SAFETY_BUFFER = 1.2; 
+
 const getPrice = (model: AIModelId) => {
   if (model === 'gemini-3-pro-image-preview') {
-    return { INPUT: 2.50, OUTPUT: 10.00 };
+    // Base: 2.50 / 10.00 -> Buffered: 3.00 / 12.00
+    return { 
+      INPUT: 2.50 * SAFETY_BUFFER, 
+      OUTPUT: 10.00 * SAFETY_BUFFER 
+    };
   } else if (model === 'veo-3.1-fast-generate-preview') {
-    return { INPUT: 5.00, OUTPUT: 20.00 }; 
+    // Base: 5.00 / 20.00 -> Buffered: 6.00 / 24.00
+    return { 
+      INPUT: 5.00 * SAFETY_BUFFER, 
+      OUTPUT: 20.00 * SAFETY_BUFFER 
+    }; 
   } else {
-    return { INPUT: 0.10, OUTPUT: 0.40 };
+    // Base: 0.10 / 0.40 -> Buffered: 0.12 / 0.48
+    return { 
+      INPUT: 0.10 * SAFETY_BUFFER, 
+      OUTPUT: 0.40 * SAFETY_BUFFER 
+    };
   }
 };
 
@@ -33,9 +48,12 @@ const calculateEstimatedCost = (settings: ImageSettings) => {
     totalOutputTokens = (settings.videoDuration || 5) * EST_VIDEO_OUTPUT_TOKENS_PER_SEC;
   } else {
     const viewAngles = settings.viewAngle?.length || 1;
+    const focalLengths = settings.focalLength?.length || 1; // Added Focal Length Multiplier
     const countPerAngle = settings.outputCount || 1;
-    const deviceCount = settings.photographyDevice?.length || 1; // Factor in devices
-    count = viewAngles * countPerAngle * deviceCount;
+    const deviceCount = settings.photographyDevice?.length || 1; 
+    
+    // Updated formula: Angles * Lenses * Devices * Variants
+    count = viewAngles * focalLengths * countPerAngle * deviceCount;
     
     const singleInput = EST_INPUT_IMAGE_TOKENS + EST_INPUT_TEXT_TOKENS;
     const singleOutput = EST_OUTPUT_TOKENS_PER_IMAGE;
@@ -76,18 +94,30 @@ export const FILTERS: { value: FilterType; label: string; desc: string; colorFro
   { value: 'cinematic', label: 'Điện Ảnh', desc: 'Teal & Orange, đậm đà.', colorFrom: '#0f172a', colorTo: '#c2410c' },
 ];
 
+// UPDATED SCENES PRESET LIST
 export const SCENES: { value: SceneType; label: string }[] = [
-  { value: 'studio', label: 'Studio (Sạch sẽ)' },
-  { value: 'vn_tet', label: 'Tết Cổ Truyền Việt Nam' },
-  { value: 'vn_coffee', label: 'Cà Phê Phố Cổ / Vỉa Hè' },
-  { value: 'vn_lotus', label: 'Hồ Sen / Thiên Nhiên VN' },
-  { value: 'vn_bamboo', label: 'Tre Trúc / Làng Quê' },
-  { value: 'vn_indochine', label: 'Nội Thất Indochine (Đông Dương)' },
-  { value: 'living_room', label: 'Phòng Khách Hiện Đại' },
-  { value: 'kitchen', label: 'Nhà Bếp Sang Trọng' },
-  { value: 'office', label: 'Bàn Làm Việc / Office' },
-  { value: 'nature', label: 'Thiên Nhiên / Rừng' },
-  { value: 'retail_shelf', label: 'Kệ Trưng Bày' },
+  // GROUP 1: TECH / CREATOR GEAR
+  { value: 'tech_desk', label: 'Tech Desk / Creator Workspace' },
+  { value: 'workbench', label: 'Workbench / Maker Lab' },
+  { value: 'acrylic_base', label: 'Acrylic Base Tech Light' },
+  { value: 'studio_dark', label: 'Studio Tone Đen / Tech' },
+  { value: 'creator_lifestyle', label: 'Creator Desk Lifestyle' },
+  
+  // GROUP 2: LIFESTYLE / DECOR
+  { value: 'shelf_decor', label: 'Kệ Sách Decor / Aesthetic' },
+  { value: 'streetwear', label: 'Streetwear / Urban Acc' },
+  { value: 'night_light', label: 'Bàn Đầu Giường / Đèn Ngủ' },
+  { value: 'handheld_usage', label: 'Trên Tay / Real Usage' },
+  { value: 'aesthetic_room', label: 'Góc Phòng Decor Modern' },
+  
+  // GROUP 3: NATURE / VN CULTURE
+  { value: 'balcony_urban', label: 'Ban Công Chung Cư' },
+  { value: 'park_city', label: 'Công Viên Thành Phố' },
+  { value: 'hoi_an', label: 'Phố Cổ Hội An (Tone Vàng)' },
+  { value: 'city_neon', label: 'City Night Neon' },
+  { value: 'vintage_street', label: 'Góc Phố Xưa / Tường Rêu' },
+  
+  // CUSTOM
   { value: 'custom', label: 'Tùy Chỉnh (Nhập mô tả)' },
 ];
 
@@ -119,7 +149,6 @@ export const LIGHTING: { value: Lighting; label: string }[] = [
 // --- LENSES CONFIGURATION ---
 
 // PROFESSIONAL LENSES (16, 50, 85)
-// Updated descriptions to emphasize optical effects
 export const PRO_LENSES: { value: FocalLength; label: string; desc: string }[] = [
   { value: '16mm', label: '16mm', desc: 'Rất Rộng. Lấy hết bối cảnh.' },
   { value: '50mm', label: '50mm', desc: 'Chuẩn Mắt Người. Ít méo.' },
@@ -136,10 +165,16 @@ export const MOBILE_LENSES: { value: FocalLength; label: string; desc: string }[
 // PHOTO INTERACTIONS
 export const INTERACTIONS: { value: HumanInteraction; label: string }[] = [
   { value: 'none', label: 'Không có (Chỉ sản phẩm)' },
-  { value: 'hand_holding', label: 'Một Tay Cầm (Cận Cảnh Tay)' },
+  { value: 'hand_holding', label: 'Một Tay Cầm (Basic)' },
   { value: 'presenting', label: 'Hai Tay Đưa Ra (Trân Trọng)' },
-  { value: 'using', label: 'Người Đang Sử Dụng (Thấy Người)' },
-  { value: 'model_standing', label: 'Mẫu Đứng Cạnh (Thấy Người)' },
+  { value: 'using', label: 'Người Đang Sử Dụng (Chung)' },
+  { value: 'model_standing', label: 'Mẫu Đứng Cạnh (Fashion)' },
+  // NEW ADDITIONS
+  { value: 'bag_clip', label: 'Gắn Vào Balo/Túi (Móc Khóa)' },
+  { value: 'typing_working', label: 'Tay Gõ Phím/Làm Việc (Tech)' },
+  { value: 'turning_on', label: 'Tay Bật Công Tắc (Đèn)' },
+  { value: 'flatlay_arranging', label: 'Tay Sắp Xếp Đồ (Flatlay)' },
+  { value: 'holding_to_light', label: 'Giơ Lên Trước Ánh Sáng (Soi)' },
 ];
 
 // VIDEO INTERACTIONS (Motion based)
@@ -147,8 +182,12 @@ export const VIDEO_INTERACTIONS: { value: HumanInteraction; label: string }[] = 
   { value: 'none', label: 'Tĩnh vật (Không người)' },
   { value: 'hand_pick_up', label: 'Cầm sản phẩm lên' },
   { value: 'hand_rotate', label: 'Xoay sản phẩm trên tay' },
-  { value: 'using_product', label: 'Sử dụng sản phẩm (Lifestyle)' },
+  { value: 'using_product', label: 'Sử dụng (Lifestyle)' },
   { value: 'unboxing', label: 'Mở hộp / Khui seal' },
+  // NEW ADDITIONS
+  { value: 'plug_in_turn_on', label: 'Cắm điện / Bật đèn' },
+  { value: 'bag_clip_motion', label: 'Thao tác Gắn Balo/Túi' },
+  { value: 'satisfying_click', label: 'Bấm nút / ASMR Visual' },
 ];
 
 export const HUMAN_STYLES: { value: HumanStyle; label: string }[] = [

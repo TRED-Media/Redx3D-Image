@@ -8,6 +8,7 @@ import CostModal from './components/CostModal';
 import ComparisonView from './components/ComparisonView';
 import { ProcessedImage, ImageSettings, DEFAULT_SETTINGS, ProjectStats } from './types';
 import { generateProductImage, generateProductVideo } from './services/geminiService';
+import { storageService } from './services/storageService';
 import { fileToBase64, applyWatermark, downloadImage } from './utils/imageUtils';
 import { Icons } from './components/Icon';
 import { PRICING_CONFIG } from './constants';
@@ -23,14 +24,16 @@ const App: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [settings, setSettings] = useState<ImageSettings>(DEFAULT_SETTINGS);
   const [processingQueue, setProcessingQueue] = useState<string[]>([]);
+  const [isStorageLoaded, setIsStorageLoaded] = useState(false);
   
-  // States
-  const [projectStats, setProjectStats] = useState<ProjectStats>({
+  // LIFETIME STATS (Persistent)
+  const [lifetimeStats, setLifetimeStats] = useState<ProjectStats>({
     totalImagesGenerated: 0,
     totalInputTokens: 0,
     totalOutputTokens: 0,
     totalCost: 0
   });
+
   const [showCostModal, setShowCostModal] = useState(false);
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [isRightOpen, setIsRightOpen] = useState(false);
@@ -38,6 +41,55 @@ const App: React.FC = () => {
 
   const selectedImage = history.find(img => img.id === selectedId);
   const isProcessing = processingQueue.length > 0;
+
+  // -- Load History & Stats from DB --
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const savedImages = await storageService.getAllImages();
+        
+        // Clean up stuck processing items
+        const cleanImages = savedImages.map(img => {
+          if (img.status === 'processing') {
+            return { ...img, status: 'failed' as const, error: 'Interrupted by reload' };
+          }
+          return img;
+        });
+
+        // Calculate stats JUST from current history (for sync check)
+        let historyStats: ProjectStats = {
+          totalImagesGenerated: 0,
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalCost: 0
+        };
+
+        cleanImages.forEach(img => {
+           if (img.status === 'completed' && img.costData) {
+             historyStats.totalImagesGenerated++;
+             historyStats.totalInputTokens += img.costData.actualInputTokens;
+             historyStats.totalOutputTokens += img.costData.actualOutputTokens;
+             historyStats.totalCost += img.costData.actualCost;
+           }
+        });
+
+        // Sync Lifetime Stats: Ensure they are at least as high as current history
+        const syncedStats = storageService.syncStatsWithHistory(historyStats);
+
+        setHistory(cleanImages);
+        setLifetimeStats(syncedStats);
+        
+        if (cleanImages.length > 0) {
+            setSelectedId(cleanImages[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load data", err);
+      } finally {
+        setIsStorageLoaded(true);
+      }
+    };
+    loadData();
+  }, []);
 
   // -- Keyboard Shortcut for Comparison --
   useEffect(() => {
@@ -59,12 +111,15 @@ const App: React.FC = () => {
       const file = files[i];
       try {
         const base64 = await fileToBase64(file);
-        newImages.push({
+        const newImg: ProcessedImage = {
           id: uuidv4(),
           originalUrl: base64,
           timestamp: Date.now(),
           status: 'idle'
-        });
+        };
+        newImages.push(newImg);
+        // Save to DB
+        storageService.saveImage(newImg);
       } catch (err) {
         console.error("Failed to read file", file.name, err);
       }
@@ -76,9 +131,25 @@ const App: React.FC = () => {
     setIsLeftOpen(false); // Close sidebar on mobile after upload interaction
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     setHistory(prev => prev.filter(img => img.id !== id));
     if (selectedId === id) setSelectedId(null);
+    // Remove from DB, but DO NOT decrement lifetime stats
+    await storageService.deleteImage(id);
+  };
+
+  const handleResetStats = async () => {
+    if (window.confirm("Bạn có chắc muốn RESET toàn bộ thống kê chi phí về 0 không?")) {
+        const reset = storageService.resetLifetimeStats();
+        setLifetimeStats(reset);
+    }
+  };
+
+  const handleClearAll = async () => {
+    setHistory([]);
+    setSelectedId(null);
+    // Clear DB Images, but keep Lifetime Stats (money is still spent)
+    await storageService.clearAll();
   };
 
   const handleGenerateClick = () => {
@@ -88,8 +159,7 @@ const App: React.FC = () => {
   };
 
   const handleConfirmGenerate = async () => {
-    // 1. Mandatory API Key Check for Premium Models (Veo & Gemini 3 Pro)
-    // This fixes the 403 PERMISSION_DENIED error by ensuring a paid key is selected.
+    // 1. Mandatory API Key Check for Premium Models
     const aistudio = (window as any).aistudio as AIStudio | undefined;
 
     if (aistudio && (settings.model === 'veo-3.1-fast-generate-preview' || settings.model === 'gemini-3-pro-image-preview')) {
@@ -108,13 +178,13 @@ const App: React.FC = () => {
 
     // Pricing Logic
     const pricing = PRICING_CONFIG.getPrice(settings.model);
-    // For Video, we force 1 output per request usually
+    
     const countPerAngle = settings.model === 'veo-3.1-fast-generate-preview' ? 1 : (settings.outputCount || 1);
     const numberOfAngles = settings.model === 'veo-3.1-fast-generate-preview' ? 1 : (settings.viewAngle?.length || 1);
-    // Updated: Count devices
+    const numberOfLenses = settings.model === 'veo-3.1-fast-generate-preview' ? 1 : (settings.focalLength?.length || 1);
     const numberOfDevices = settings.model === 'veo-3.1-fast-generate-preview' ? 1 : (settings.photographyDevice?.length || 1);
     
-    const totalExpected = countPerAngle * numberOfAngles * numberOfDevices;
+    const totalExpected = countPerAngle * numberOfAngles * numberOfLenses * numberOfDevices;
 
     const estInput = (PRICING_CONFIG.EST_INPUT_IMAGE_TOKENS + PRICING_CONFIG.EST_INPUT_TEXT_TOKENS);
     const estOutput = PRICING_CONFIG.EST_OUTPUT_TOKENS_PER_IMAGE;
@@ -132,7 +202,6 @@ const App: React.FC = () => {
       timestamp: Date.now(),
       status: 'processing',
       settingsUsed: { ...settings },
-      // Initialize video flag based on model
       isVideo: settings.model === 'veo-3.1-fast-generate-preview',
       costData: {
           estimatedInputTokens: estInput,
@@ -145,7 +214,10 @@ const App: React.FC = () => {
       }
     }));
 
+    // Update State & DB for processing items
     setHistory(prev => [...newEntries, ...prev]);
+    newEntries.forEach(img => storageService.saveImage(img));
+    
     if (newProcessingIds.length > 0) setSelectedId(newProcessingIds[0]);
     setProcessingQueue(prev => [...prev, ...newProcessingIds]);
 
@@ -163,6 +235,7 @@ const App: React.FC = () => {
       let batchInputTokens = 0;
       let batchOutputTokens = 0;
       let batchCost = 0;
+      let batchCount = 0;
 
       for (let i = 0; i < newProcessingIds.length; i++) {
         const pid = newProcessingIds[i];
@@ -170,7 +243,7 @@ const App: React.FC = () => {
             const result = generatedResults[i];
             let finalUrl = result.imageUrl;
             
-            // Apply watermark only if it's an image (canvas watermarking doesn't support video easily in client)
+            // Apply watermark
             if (!result.isVideo && settings.watermark?.enabled && settings.watermark.url) {
                 finalUrl = await applyWatermark(finalUrl, settings.watermark);
             }
@@ -182,12 +255,15 @@ const App: React.FC = () => {
             batchInputTokens += result.usage.inputTokens;
             batchOutputTokens += result.usage.outputTokens;
             batchCost += totalActualCost;
+            batchCount++;
 
             const variance = ((totalActualCost - estCost) / estCost) * 100;
-            updates.set(pid, { 
-                status: 'completed', 
+            
+            const completedImageUpdate = { 
+                status: 'completed' as const, 
                 processedUrl: finalUrl,
                 isVideo: result.isVideo,
+                seed: result.seed,
                 costData: {
                     estimatedInputTokens: estInput,
                     estimatedOutputTokens: estOutput,
@@ -197,32 +273,60 @@ const App: React.FC = () => {
                     actualCost: totalActualCost,
                     variancePercent: variance
                 }
-            });
+            };
+
+            updates.set(pid, completedImageUpdate);
+            
+            // Save Completed Image to DB
+            const fullImg: ProcessedImage = {
+                ...newEntries[i],
+                ...completedImageUpdate
+            };
+            storageService.saveImage(fullImg);
+
         } else {
-             updates.set(pid, { status: 'failed', error: "API did not return enough results" });
+             const failedUpdate = { status: 'failed' as const, error: "API did not return enough results" };
+             updates.set(pid, failedUpdate);
+             storageService.saveImage({ ...newEntries[i], ...failedUpdate });
         }
       }
 
       setHistory(prev => prev.map(img => updates.has(img.id) ? { ...img, ...updates.get(img.id) } : img));
 
-      setProjectStats(prev => ({
-        totalImagesGenerated: prev.totalImagesGenerated + generatedResults.length,
-        totalInputTokens: prev.totalInputTokens + batchInputTokens,
-        totalOutputTokens: prev.totalOutputTokens + batchOutputTokens,
-        totalCost: prev.totalCost + batchCost
-      }));
+      // UPDATE LIFETIME STATS (Persistent) - Now with modelID
+      const incrementStats = {
+        totalImagesGenerated: batchCount,
+        totalInputTokens: batchInputTokens,
+        totalOutputTokens: batchOutputTokens,
+        totalCost: batchCost
+      };
+      
+      const newTotalStats = storageService.updateLifetimeStats(incrementStats, settings.model);
+      setLifetimeStats(newTotalStats);
 
     } catch (error: any) {
       console.error("Generation Error:", error);
       
-      // Auto-trigger Key Selection again if we hit 403 or Not Found
       if (aistudio && (error.message?.includes("403") || error.message?.includes("not found"))) {
         try {
             await aistudio.openSelectKey();
         } catch (e) { /* ignore */ }
       }
-
-      setHistory(prev => prev.map(img => newProcessingIds.includes(img.id) ? { ...img, status: 'failed', error: error.message } : img));
+      
+      // Update DB for failed items
+      const errorMsg = error.message;
+      setHistory(prev => {
+         const newState = prev.map(img => {
+            if (newProcessingIds.includes(img.id)) {
+               const failedImg = { ...img, status: 'failed' as const, error: errorMsg };
+               storageService.saveImage(failedImg); 
+               return failedImg;
+            }
+            return img;
+         });
+         return newState;
+      });
+      
     } finally {
       setProcessingQueue(prev => prev.filter(id => !newProcessingIds.includes(id)));
     }
@@ -265,7 +369,10 @@ const App: React.FC = () => {
       {/* Left Sidebar Drawer */}
       <div className={`fixed inset-y-0 left-0 z-50 w-[85%] sm:w-80 transform transition-transform duration-300 ease-out md:relative md:translate-x-0 md:w-auto shadow-2xl ${isLeftOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <LeftSidebar 
-          history={history} onUpload={handleUpload} onSelectImage={setSelectedId} selectedId={selectedId} onDelete={handleDelete} onClose={() => setIsLeftOpen(false)} projectStats={projectStats} settings={settings} onUpdateSettings={setSettings}
+          history={history} onUpload={handleUpload} onSelectImage={setSelectedId} selectedId={selectedId} onDelete={handleDelete} onClose={() => setIsLeftOpen(false)} 
+          projectStats={lifetimeStats} // PASS LIFETIME STATS HERE
+          settings={settings} onUpdateSettings={setSettings}
+          onResetStats={handleResetStats} // Pass Reset Handler
         />
       </div>
 
@@ -394,7 +501,14 @@ const App: React.FC = () => {
           )}
         </div>
 
-        <BottomHistoryBar history={history} onSelectImage={setSelectedId} selectedId={selectedId} onDelete={handleDelete} />
+        {/* Pass onClearAll to Bottom Bar */}
+        <BottomHistoryBar 
+          history={history} 
+          onSelectImage={setSelectedId} 
+          selectedId={selectedId} 
+          onDelete={handleDelete} 
+          onClearAll={handleClearAll}
+        />
       </main>
 
       {/* Right Sidebar Drawer */}

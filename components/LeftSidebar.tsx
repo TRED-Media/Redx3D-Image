@@ -1,5 +1,5 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { ProcessedImage, ProjectStats, ImageSettings, AIModelId } from '../types';
 import { Icons } from './Icon';
 import { PRICING_CONFIG, OUTPUT_COUNTS, AI_MODELS } from '../constants';
@@ -14,6 +14,7 @@ interface LeftSidebarProps {
   projectStats: ProjectStats;
   settings: ImageSettings;
   onUpdateSettings: (newSettings: ImageSettings) => void;
+  onResetStats?: () => void; // New Reset Prop
 }
 
 const LeftSidebar: React.FC<LeftSidebarProps> = ({ 
@@ -21,9 +22,11 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onClose,
   projectStats,
   settings,
-  onUpdateSettings
+  onUpdateSettings,
+  onResetStats
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -196,10 +199,16 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
            </div>
            
            {/* Bottom: Total Spent (Merged) */}
-           <div className="p-3 bg-black/40 border-t border-lab-yellow/10 space-y-1">
-              <div className="flex items-center gap-2 text-gray-500 mb-1">
-                 <Icons.History className="w-3 h-3" />
-                 <span className="font-bold tracking-wider uppercase text-[9px]">TỔNG ĐÃ CHI (T12/2025)</span>
+           <div 
+             className="p-3 bg-black/40 border-t border-lab-yellow/10 space-y-1 cursor-pointer hover:bg-black/60 transition-colors"
+             onClick={() => setShowBreakdown(!showBreakdown)}
+           >
+              <div className="flex items-center justify-between text-gray-500 mb-1">
+                 <div className="flex items-center gap-2">
+                    <Icons.History className="w-3 h-3" />
+                    <span className="font-bold tracking-wider uppercase text-[9px]">TỔNG CHI TÍCH LŨY</span>
+                 </div>
+                 <Icons.Settings className="w-3 h-3 opacity-50" />
               </div>
               <div className="flex justify-between items-center text-[10px] text-gray-500 font-mono">
                  <span>Đã tạo:</span>
@@ -211,6 +220,34 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                    {totalCostVND.toLocaleString('vi-VN')} đ
                  </span>
               </div>
+
+              {/* DETAIL BREAKDOWN */}
+              {showBreakdown && projectStats.modelCounts && (
+                <div className="mt-3 pt-2 border-t border-gray-800 space-y-1 animate-in slide-in-from-top-1">
+                   <div className="flex justify-between text-[9px] text-gray-500">
+                     <span>Veo (Video):</span>
+                     <span className="text-gray-300">{projectStats.modelCounts['veo-3.1-fast-generate-preview'] || 0}</span>
+                   </div>
+                   <div className="flex justify-between text-[9px] text-gray-500">
+                     <span>Banana 2 (Pro):</span>
+                     <span className="text-gray-300">{projectStats.modelCounts['gemini-3-pro-image-preview'] || 0}</span>
+                   </div>
+                   <div className="flex justify-between text-[9px] text-gray-500">
+                     <span>Nano (Flash):</span>
+                     <span className="text-gray-300">{projectStats.modelCounts['gemini-2.5-flash-image'] || 0}</span>
+                   </div>
+                   
+                   {/* RESET BUTTON */}
+                   {onResetStats && (
+                     <button 
+                       onClick={(e) => { e.stopPropagation(); onResetStats(); }}
+                       className="w-full mt-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded text-[9px] uppercase font-bold transition-colors"
+                     >
+                       Reset Thống Kê
+                     </button>
+                   )}
+                </div>
+              )}
            </div>
         </div>
 

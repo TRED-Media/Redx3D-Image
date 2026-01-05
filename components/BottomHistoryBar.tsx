@@ -8,13 +8,15 @@ interface BottomHistoryBarProps {
   onSelectImage: (id: string) => void;
   selectedId: string | null;
   onDelete: (id: string) => void;
+  onClearAll?: () => void; // Added prop
 }
 
 const BottomHistoryBar: React.FC<BottomHistoryBarProps> = ({
   history,
   onSelectImage,
   selectedId,
-  onDelete
+  onDelete,
+  onClearAll
 }) => {
   return (
     <div className="h-20 md:h-32 w-full bg-lab-dark/95 backdrop-blur-md border-t border-lab-border flex flex-col shrink-0 z-30 transition-all duration-500 ease-in-out safe-area-bottom">
@@ -24,6 +26,22 @@ const BottomHistoryBar: React.FC<BottomHistoryBarProps> = ({
           <Icons.History className="w-3 h-3" />
           <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider">Thư Viện Ảnh ({history.length})</span>
         </div>
+
+        {/* Delete All Button */}
+        {history.length > 0 && onClearAll && (
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm("Bạn có chắc chắn muốn xóa TOÀN BỘ lịch sử? Hành động này không thể hoàn tác.")) {
+                onClearAll();
+              }
+            }}
+            className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all group"
+          >
+            <Icons.Trash className="w-3 h-3 group-hover:animate-bounce" />
+            <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider">Xóa Tất Cả</span>
+          </button>
+        )}
       </div>
 
       {/* Horizontal Scroll List */}

@@ -6,8 +6,9 @@ export interface ProcessedImage {
   timestamp: number;
   status: 'idle' | 'processing' | 'completed' | 'failed';
   settingsUsed?: ImageSettings;
-  isVideo?: boolean; // New flag for Video support
+  isVideo?: boolean; 
   error?: string;
+  seed?: number; 
   // Cost Tracking
   costData?: {
     estimatedInputTokens: number;
@@ -18,7 +19,7 @@ export interface ProcessedImage {
     actualOutputTokens: number;
     actualCost: number;
     
-    variancePercent: number; // Chênh lệch %
+    variancePercent: number; 
   };
 }
 
@@ -27,43 +28,44 @@ export interface ProjectStats {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCost: number;
+  // New Breakdown
+  modelCounts?: {
+    'gemini-2.5-flash-image': number;
+    'gemini-3-pro-image-preview': number;
+    'veo-3.1-fast-generate-preview': number;
+  };
 }
 
-// Added 'veo-3.1-fast-generate-preview' for Video
 export type AIModelId = 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' | 'veo-3.1-fast-generate-preview';
 
 export type AspectRatio = '1:1' | '4:5' | '3:4' | '2:3' | '9:16' | '16:9';
 
-// Added Vietnamese Scenes
 export type SceneType = 
-  | 'studio' | 'kitchen' | 'living_room' | 'office' | 'nature' | 'retail_shelf' 
-  | 'vn_tet' | 'vn_coffee' | 'vn_lotus' | 'vn_bamboo' | 'vn_indochine' // New
+  // Tech / Creator Gear
+  | 'tech_desk' | 'workbench' | 'acrylic_base' | 'studio_dark' | 'creator_lifestyle'
+  // Lifestyle / Decor
+  | 'shelf_decor' | 'streetwear' | 'night_light' | 'handheld_usage' | 'aesthetic_room'
+  // Nature / Cultural VN
+  | 'balcony_urban' | 'park_city' | 'hoi_an' | 'city_neon' | 'vintage_street'
+  // Custom
   | 'custom';
 
 export type TimeOfDay = 'morning' | 'noon' | 'golden_hour' | 'night';
 export type Mood = 'minimalist' | 'luxury' | 'cozy' | 'modern' | 'lifestyle' | 'premium' | 'tech';
-// Updated Lighting
 export type Lighting = 'softbox' | 'hard_light' | 'natural_window' | 'backlight' | 'natural_backlight';
 
-// Updated Focal Lengths for Mobile support (16mm=0.5x, 24mm=1x, 120mm=5x)
 export type FocalLength = '16mm' | '24mm' | '35mm' | '50mm' | '85mm' | '100mm' | '120mm'; 
 
-// REFACTORED: Removed 'macro_detail' from Angle, added 'low_angle' and 'top_down'
 export type ViewAngle = 'eye_level' | 'high_angle_45' | 'low_angle' | 'top_down';
 
-// REFACTORED: MERGED 'extreme_close_up' INTO 'close_up'
 export type ShotSize = 'wide' | 'full' | 'medium' | 'close_up';
 
-// Human Interaction can be string to support both Photo and Video descriptions
 export type HumanInteraction = string; 
 
-// Updated Human Styles
 export type HumanStyle = 'vietnamese' | 'european';
 
-// New Photography Device Type
 export type PhotographyDevice = 'professional' | 'mobile';
 
-// New Filter Type
 export type FilterType = 'cinematic' | 'clean' | 'natural';
 
 export interface ImageSettings {
@@ -73,15 +75,19 @@ export interface ImageSettings {
   customScenePrompt?: string;
   isRemoveBackground: boolean;
   isHighRes: boolean; 
+  isSyncBackground: boolean;
+  isColorSync: boolean; // NEW: Controls White Balance consistency across batch
+  
   timeOfDay: TimeOfDay;
   mood: Mood;
   lighting: Lighting;
-  focalLength: FocalLength;
+  
+  focalLength: FocalLength[]; 
   viewAngle: ViewAngle[]; 
   shotSize: ShotSize;
   humanInteraction: HumanInteraction;
   humanStyle: HumanStyle;
-  photographyDevice: PhotographyDevice[]; // UPDATED: Changed from single string to array
+  photographyDevice: PhotographyDevice[];
   outputCount: number;
   aspectRatio: AspectRatio;
   watermark?: {
@@ -91,29 +97,29 @@ export interface ImageSettings {
     opacity: number;
     scale: number;
   };
-  // VIDEO SPECIFIC SETTINGS
   videoPrompt?: string;
-  videoDuration?: number; // seconds
+  videoDuration?: number; 
   hasVoice?: boolean;
-  // NEW FILTER SETTING
   filter: FilterType;
 }
 
 export const DEFAULT_SETTINGS: ImageSettings = {
   model: 'gemini-2.5-flash-image', 
   productDescription: '',
-  scene: 'studio',
+  scene: 'tech_desk', 
   isRemoveBackground: false,
   isHighRes: false,
+  isSyncBackground: true, 
+  isColorSync: true, // Default to true for best results
   timeOfDay: 'noon',
   mood: 'modern',
   lighting: 'softbox',
-  focalLength: '50mm', // Updated to match PRO_LENSES default (Standard)
+  focalLength: ['50mm'], 
   viewAngle: ['eye_level'],
   shotSize: 'full',
   humanInteraction: 'none',
   humanStyle: 'vietnamese',
-  photographyDevice: ['professional'], // UPDATED: Default is array
+  photographyDevice: ['professional'],
   outputCount: 1,
   aspectRatio: '1:1',
   watermark: {

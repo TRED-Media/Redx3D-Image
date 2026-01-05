@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { ImageSettings, ViewAngle, PhotographyDevice } from "../types";
+import { ImageSettings, ViewAngle, PhotographyDevice, FocalLength } from "../types";
 
 const getClient = () => {
   const apiKey = process.env.API_KEY;
@@ -27,214 +27,242 @@ interface GenResult {
     outputTokens: number;
   };
   isVideo?: boolean;
+  seed?: number;
+}
+
+// --- HELPER: MASTER COLOR PROFILE GENERATOR ---
+const getMasterColorProfile = (settings: ImageSettings): string => {
+   if (!settings.isColorSync) return ""; // Return empty if sync is disabled
+
+   // Determine Kelvin based on Filter/Lighting
+   let kelvin = "5600K (Daylight)";
+   let tint = "Neutral";
+   let palette = "Natural";
+   
+   if (settings.timeOfDay === 'golden_hour' || settings.lighting.includes('backlight')) {
+       kelvin = "3500K (Warm Golden)";
+       tint = "+10 Magenta (Warmth)";
+   } else if (settings.timeOfDay === 'night' || settings.scene === 'city_neon') {
+       kelvin = "4000K (Cool Mixed)";
+       tint = "-10 Green (Urban)";
+   } else if (settings.scene === 'studio_dark') {
+       kelvin = "6500K (Cool Studio)";
+   }
+
+   // Filter Overrides
+   switch(settings.filter) {
+       case 'cinematic': 
+           palette = "Teal Shadows, Orange Highlights. High Contrast. Slight Desaturation."; 
+           if (!kelvin.includes("Warm")) kelvin = "5000K (Balanced)";
+           break;
+       case 'clean': 
+           palette = "High Key. Whites are pure white (#FFFFFF). Bright exposure. Pastel tones."; 
+           kelvin = "5200K (Clean White)";
+           break;
+       case 'natural': 
+           palette = "True to Life (Macbeth Color Checker accurate). Moderate contrast."; 
+           break;
+   }
+
+   return `
+   *** MASTER COLOR PROFILE (MANDATORY BATCH SYNC) ***
+   - WHITE BALANCE: ${kelvin} FIXED.
+   - TINT: ${tint}.
+   - COLOR PALETTE: ${palette}.
+   - REQUIREMENT: All images in this batch MUST share this exact color grading. Do not deviate.
+   `;
 }
 
 // --- OPTIMIZED PROMPT CONSTRUCTION ---
-const constructPrompt = (settings: ImageSettings, targetAngle?: ViewAngle, targetDevice?: PhotographyDevice) => {
+const constructPrompt = (
+    settings: ImageSettings, 
+    targetAngle?: ViewAngle, 
+    targetDevice?: PhotographyDevice, 
+    targetLens?: FocalLength,
+    masterColorProfile?: string
+) => {
   
-  // 0. DETERMINE DEVICE FIRST (Critical for branching logic)
+  // 0. DETERMINE DEVICE & LENS
   const currentDevice = targetDevice || settings.photographyDevice[0] || 'professional';
-   
-  // 1. SCENE CONSTRUCTION (Detailed Atmosphere & Texture)
-  let sceneDesc = "";
-  if (settings.isRemoveBackground) {
-    sceneDesc = "Environment: PURE SOLID WHITE BACKGROUND (#FFFFFF) with gentle ground shadows for grounding. Studio isolation style.";
-  } else {
-    switch (settings.scene) {
-      // VN Scenes - Detailed
-      case 'vn_tet': 
-        sceneDesc = "Environment: Authentic Vietnamese Lunar New Year (Tet) setting. Background featuring vibrant Ochna integerrima (yellow Mai flowers) or Peach blossoms. Decor includes lucky red envelopes (Lì Xì), lanterns, and traditional wooden furniture. Warm, festive, golden lighting."; 
-        break;
-      case 'vn_coffee': 
-        sceneDesc = "Environment: Classic Hanoi Old Quarter sidewalk cafe. Low wooden stool and table, textured yellow wall background with vintage patina. Morning sunlight filtering through street trees. Nostalgic, peaceful vibe."; 
-        break;
-      case 'vn_lotus': 
-        sceneDesc = "Environment: Serene Vietnamese Lotus Pond. Soft focus background of large green lotus leaves and pink lotus flowers. Morning mist on the water surface. Natural, fresh, organic atmosphere."; 
-        break;
-      case 'vn_bamboo': 
-        sceneDesc = "Environment: Traditional Vietnamese village bamboo path. Green bamboo grove background with dappled sunlight. Rustic earth or brick pathway. Zen, calm, eco-friendly feel."; 
-        break;
-      case 'vn_indochine': 
-        sceneDesc = "Environment: Indochine Interior Style. Fusion of French colonial and Vietnamese traditional design. Encaustic cement tile flooring, dark rattan furniture, mustard yellow walls, tropical indoor plants. Elegant and vintage."; 
-        break;
-      
-      // Standard Scenes - Detailed
-      case 'studio': 
-        sceneDesc = "Environment: High-end Minimalist Commercial Studio. Infinity Cyclorama wall. Soft, diffuse lighting with no harsh shadows. Neutral tones to emphasize the product."; 
-        break;
-      case 'kitchen': 
-        sceneDesc = "Environment: Luxury Modern Kitchen. White marble countertop with subtle veining. Blurred background of high-end appliances and cabinetry. Clean, sanitary, premium lifestyle."; 
-        break;
-      case 'living_room': 
-        sceneDesc = "Environment: Contemporary Living Room. Stylish coffee table surface (wood or glass). Background of a cozy sofa and soft rug with warm ambient lighting. Comfortable home atmosphere."; 
-        break;
-      case 'office': 
-        sceneDesc = "Environment: Professional Creative Workspace. Sleek desk surface. Background includes a laptop, notebook, and perhaps a small succulent plant. Organized, productive, tech-forward vibe."; 
-        break;
-      case 'nature': 
-        sceneDesc = "Environment: Deep Forest Nature. Product placed on a mossy rock or natural wood stump. Bokeh background of trees and foliage. Dappled sunlight (God rays). Fresh, outdoor, organic."; 
-        break;
-      case 'retail_shelf': 
-        sceneDesc = "Environment: Premium Retail Store Shelf. Spotlighting on the product. Shallow depth of field blurring other products in the background. Commercial merchandising context."; 
-        break;
-      case 'custom': 
-        sceneDesc = `Environment: ${settings.customScenePrompt || "Professional commercial background"}.`; 
-        break;
-    }
-  }
-
-  // 2. INTERACTION (Physics & Context) - SPLIT BY DEVICE
-  let interactionPrompt = "";
-  const modelDesc = settings.humanStyle === 'vietnamese' ? "Vietnamese person" : "European person";
+  const currentLens = targetLens || settings.focalLength[0] || '50mm';
   
-  // LOGIC MOBILE CỰC MẠNH (Flash, Noise, Ugly-Authentic)
+  // --- 1. OPTICAL PHYSICS ENGINE (CRITICAL PRIORITY) ---
+  let lensPhysics = "";
+  
   if (currentDevice === 'mobile') {
-      switch(settings.humanInteraction) {
-        case 'none': 
-            interactionPrompt = "Subject: RAW PHONE PHOTO. The product is placed casually on a surface. HARSH DIRECT FLASH is ON. Hard shadows behind the product. Digital noise/grain visible. Looks like a quick snapshot sent via message."; 
-            break;
-        case 'hand_holding': 
-            interactionPrompt = `Subject: POV HAND HELD SHOT. A real user's hand gripping the product firmly. DIRECT CAMERA FLASH ON. Skin texture is raw and unedited (visible pores). Thumb might be slightly blurry or overlapping the label. Background is dark/dim due to flash falloff. Authentic UGC review style.`; 
-            break;
-        case 'presenting': 
-            interactionPrompt = `Subject: MIRROR SELFIE / WIDE LENS STYLE. A hand holding the product close to the camera lens. WIDE ANGLE DISTORTION (Big hand, smaller body). "Shot on iPhone" aesthetic. Slightly tilted horizon.`; 
-            break;
-        case 'using': 
-            interactionPrompt = `Subject: ACTION SNAPSHOT. A ${modelDesc} using the product in a messy, real-life environment. MOTION BLUR on the hands. Not a posed photo. Chaotic, real, authentic energy. High contrast.`; 
-            break;
-        case 'model_standing': 
-            interactionPrompt = `Subject: CASUAL OUTFIT CHECK. A ${modelDesc} standing with the product. Full body or 3/4 shot taken with a phone back camera. Artificial sharpening artifacts. Ceiling fluorescent lighting or direct sunlight.`; 
-            break;
-        
-        // Video Mobile
-        case 'hand_pick_up': interactionPrompt = `Action: POV Shot. A hand reaches into the frame and grabs the product quickly, like unboxing/testing.`; break;
-        case 'hand_rotate': interactionPrompt = `Action: Hand-held product review. The user rotates the product in front of the phone camera to show details.`; break;
-        case 'using_product': interactionPrompt = `Action: A user testing the product in real time. Authentic, unpolished movement.`; break;
-        case 'unboxing': interactionPrompt = `Action: POV Unboxing. Hands tearing open the package or lifting the lid. Shakey handheld camera feel.`; break;
-        default: interactionPrompt = "Subject: Focus on the product in a real environment."; break;
+      // Mobile Lens Simulation
+      switch(currentLens) {
+          case '16mm': // 0.5x
+              lensPhysics = `
+              LENS: 16mm ULTRA-WIDE (0.5x).
+              PHYSICS: Strong perspective distortion. The center of the object bulges slightly. Background is pushed far away.
+              VIBE: Dynamic, Action camera feel. High FOV (120 degrees).
+              `;
+              break;
+          case '24mm': // 1x
+              lensPhysics = `
+              LENS: 24mm WIDE (1x Smartphone Main Camera).
+              PHYSICS: Standard wide angle. Slight perspective elongation at corners. Sharp depth of field (everything mostly in focus).
+              `;
+              break;
+          case '85mm': // 3x
+              lensPhysics = `
+              LENS: 77mm-85mm TELEPHOTO (3x Zoom).
+              PHYSICS: Digital Bokeh. Background is compressed and blurry. Subject looks flat and flattering.
+              `;
+              break;
+          default: lensPhysics = "LENS: Standard Smartphone Camera.";
       }
   } else {
-      // --- PROFESSIONAL INTERACTIONS (Studio, Perfect, Elegant) ---
-      switch(settings.humanInteraction) {
-        case 'none': interactionPrompt = "Subject: HIGH-END STILL LIFE. The object is stationary. Perfect composition."; break;
-        case 'hand_holding': interactionPrompt = `Subject: HAND MODELING. A perfectly manicured hand of a ${modelDesc} enters the frame, holding the product gracefully. Elegant finger positioning. Soft, flattering lighting on the skin. Commercial standard.`; break;
-        case 'presenting': interactionPrompt = `Subject: LUXURY PRESENTATION. Two hands of a ${modelDesc} gently presenting the product as if it were a jewel. Symmetrical, respectful pose. Focus on elegance.`; break;
-        case 'using': interactionPrompt = `Subject: COMMERCIAL LIFESTYLE. A ${modelDesc} using the product in a staged, perfect environment. The model is well-lit and posed. Advertising quality.`; break;
-        case 'model_standing': interactionPrompt = `Subject: FASHION EDITORIAL. A professional ${modelDesc} model posing with the product. High-fashion lighting, sharp focus, magazine cover quality.`; break;
-        
-        // Video Pro
-        case 'hand_pick_up': interactionPrompt = `Action: Slow-motion cinematic pick up. The hand enters gracefully and lifts the product with precision.`; break;
-        case 'hand_rotate': interactionPrompt = `Action: Turntable style rotation or very smooth hand rotation showcasing the product silhouette.`; break;
-        case 'using_product': interactionPrompt = `Action: Cinematic demonstration of the product features by a professional actor.`; break;
-        case 'unboxing': interactionPrompt = `Action: Premium unboxing experience. Slow reveal. controlled lighting changes.`; break;
-        default: interactionPrompt = "Subject: Focus strictly on the product."; break;
+      // Professional Lens Simulation
+      switch(currentLens) {
+          case '16mm':
+              lensPhysics = `
+              LENS: 16mm G-MASTER WIDE ANGLE.
+              OPTICAL RULES:
+              1. Exaggerate perspective lines (vanishing points are far).
+              2. "Stretch" the foreground elements.
+              3. Deep depth of field (Background is visible but distant).
+              4. Create a sense of vast scale.
+              `;
+              break;
+          case '35mm':
+              lensPhysics = "LENS: 35mm Reportage Lens. Natural width, slight environment context inclusion.";
+              break;
+          case '50mm':
+              lensPhysics = "LENS: 50mm Standard Prime. Human eye perspective. Zero distortion. Neutral geometry.";
+              break;
+          case '85mm':
+          case '100mm':
+          case '120mm':
+              lensPhysics = `
+              LENS: ${currentLens} TELEPHOTO MACRO / PORTRAIT.
+              OPTICAL RULES:
+              1. COMPRESS THE SPACE. The background must appear visually close to the object.
+              2. EXTREME BOKEH (f/1.2). Background must be creamy and unintelligible.
+              3. FLATTEN THE PERSPECTIVE. No fish-eye distortion. Isometric-like parallel lines.
+              4. Focus is razor thin on the product texture.
+              `;
+              break;
+          default: lensPhysics = `LENS: ${currentLens} Prime Lens.`;
       }
   }
 
-  // 3. OPTICAL SETTINGS & DEVICE DIFFERENTIATION
-  let cameraSystemPrompt = "";
-  
-  if (currentDevice === 'mobile') {
-      cameraSystemPrompt = `
-      CAMERA SYSTEM: SMARTPHONE SENSOR (iPhone/Pixel).
-      - LIGHTING: HARSH DIRECT FLASH / HARD LIGHT.
-      - QUALITY: Low dynamic range. Highlights might be slightly blown out. Shadows are deep and hard.
-      - ARTIFACTS: Digital sharpening halos, ISO noise/grain.
-      - AESTHETIC: RAW, UNEDITED, AMATEUR, SOCIAL MEDIA STORY.
-      `;
-  } else {
-      cameraSystemPrompt = `
-      CAMERA SYSTEM: PROFESSIONAL CINEMA / STUDIO CAMERA (Hasselblad X2D or Sony A7R V).
-      - LIGHTING: SOFTBOX / DIFFUSED STUDIO LIGHT.
-      - QUALITY: High dynamic range. Soft rollover highlights.
-      - LENS: Prime G-Master or Zeiss Lens. True optical physics.
-      - AESTHETIC: HIGH-END COMMERCIAL PRODUCTION.
-      `;
-  }
-  
-  // Focal Length Physics
-  let lensDesc = `Focal Length: ${settings.focalLength}.`;
-  if (settings.focalLength === '85mm' || settings.focalLength === '100mm' || settings.focalLength === '120mm') {
-      lensDesc += " EFFECT: STRONG OPTICAL BOKEH. Background must be heavily blurred (creamy blur). Separation of subject from background is extreme.";
-  } else if (settings.focalLength === '16mm') {
-      lensDesc += " EFFECT: WIDE ANGLE DISTORTION. Deep depth of field. Background is visible and sharp.";
-  }
-
-  let filterPrompt = "";
-  switch(settings.filter) {
-    case 'cinematic': filterPrompt = "Color Grading: Cinematic Look. Teal and Orange separation, high dynamic range, rich blacks, slight film grain, dramatic mood."; break;
-    case 'clean': filterPrompt = "Color Grading: Commercial High-Key. Bright exposure, clean whites, vibrant colors, low contrast, clinical and fresh."; break;
-    case 'natural': filterPrompt = "Color Grading: True-to-Life. Neutral white balance, accurate color reproduction, soft natural contrast."; break;
-  }
-
-  // 4. VIEW ANGLE & PERSPECTIVE (Geometric Instruction)
-  let angleDesc = "";
+  // --- 2. GEOMETRIC CAMERA ANGLE (CRITICAL PRIORITY) ---
+  let anglePhysics = "";
   if (targetAngle) {
      switch(targetAngle) {
         case 'eye_level': 
-            angleDesc = "Camera Elevation: EYE LEVEL (0°). The camera lens is strictly parallel to the horizon and the center of the product. Neutral perspective. Vertical lines are straight."; 
+            anglePhysics = `
+            CAMERA POSITION: EYE LEVEL (0° Elevation). 
+            GEOMETRY: The camera lens is parallel to the floor. Vertical lines of the product must remain VERTICAL (No converging verticals).
+            We see the FRONT FACE of the product directly.
+            `; 
             break;
         case 'high_angle_45': 
-            angleDesc = "Camera Elevation: HIGH ANGLE (45°). The camera looks down at the subject from above, revealing the top surface and 3D depth."; 
+            anglePhysics = `
+            CAMERA POSITION: 45° HIGH ANGLE (Standard Product View).
+            GEOMETRY: Camera is elevated, looking down. We MUST see the TOP SURFACE and the FRONT/SIDE surfaces simultaneously.
+            3-Point Perspective.
+            `; 
             break;
         case 'low_angle':
-            angleDesc = "Camera Elevation: LOW ANGLE / HERO SHOT. The camera is placed physically LOW (near the ground) looking UP at the product. Horizon line is low. Makes the product look grand."; 
+            anglePhysics = `
+            CAMERA POSITION: WORM'S EYE VIEW (Low Angle).
+            GEOMETRY: Camera is on the ground/table surface looking UP at the object.
+            EFFECT: The object looks monumental and tall. Horizon line is at the bottom 10% of the image.
+            `; 
             break;
         case 'top_down':
-            // FIXED: STRICT FLATLAY / TOP SHOT PROMPT
-            angleDesc = `
-            Camera Elevation: BIRD'S-EYE VIEW / TOP SHOT (90° VERTICAL). 
-            SUBJECT PLACEMENT: The product is LAYING FLAT on the surface. 
-            ORIENTATION: The camera is looking DIRECTLY DOWN at the ground/table. 
-            COMPOSITION: Knolling / Flatlay. 2D Graphical arrangement. 
-            Do not show the front face or sides standing up. Show the TOP FACE or the product laying on its back.
+            anglePhysics = `
+            CAMERA POSITION: 90° TOP DOWN (Flatlay / Knolling).
+            GEOMETRY: 
+            - The camera is looking perpendicular to the table.
+            - 2D Planar view.
+            - DO NOT show the horizon. DO NOT show walls. ONLY the floor/table surface.
+            - We see the TOP FACE of the object.
             `; 
             break;
      }
   }
 
-  // 5. SHOT SIZE / FRAMING (Proximity Instruction)
-  let shotDesc = "";
-  switch (settings.shotSize) {
-      case 'wide':
-          shotDesc = "Framing: WIDE SHOT. The product is SMALL (<20% of frame area). Emphasize the vastness of the surrounding environment/room. Negative space is dominant.";
-          break;
-      case 'full':
-          shotDesc = "Framing: FULL SHOT. The product fits comfortably in the frame (top to bottom visible). Standard e-commerce framing.";
-          break;
-      case 'medium':
-          shotDesc = "Framing: MEDIUM SHOT. The product occupies about 60% of the frame. Focus on the overall form and shape.";
-          break;
-      case 'close_up':
-          shotDesc = "Framing: EXTREME CLOSE-UP / MACRO. The product is HUGE (>90% of frame) or cropping into the frame. The camera is physically VERY CLOSE to the object. FOCUS ON SURFACE TEXTURE (leather grain, glass reflection, metal polish). Visible material details.";
-          break;
+  // --- 3. SCENE CONTEXT ---
+  let sceneDesc = "";
+  if (settings.isRemoveBackground) {
+    sceneDesc = "Environment: PURE SOLID WHITE BACKGROUND (#FFFFFF). Studio Lighting. Minimal shadows.";
+  } else {
+    // Keep descriptions concise to not override camera physics
+    switch (settings.scene) {
+      case 'tech_desk': sceneDesc = "Scene: Modern Dark Tech Desk. Monitor light bar atmosphere. Blurred keyboard in background."; break;
+      case 'workbench': sceneDesc = "Scene: Gritty Workshop Table. Tools and sawdust. Industrial lighting."; break;
+      case 'acrylic_base': sceneDesc = "Scene: Clear Acrylic Podium. Studio abstract environment. High contrast."; break;
+      case 'studio_dark': sceneDesc = "Scene: Pitch Black Studio. Rim lighting only. Mysterious vibe."; break;
+      case 'creator_lifestyle': sceneDesc = "Scene: Wooden Coffee Table. Cozy notebook and pen. Warm window light."; break;
+      case 'shelf_decor': sceneDesc = "Scene: Interior Bookshelf. Plants and decor items. Soft home lighting."; break;
+      case 'streetwear': sceneDesc = "Scene: Concrete Street Floor. Urban sunlight. Asphalt texture."; break;
+      case 'night_light': sceneDesc = "Scene: Bedroom Nightstand. Warm lamp glow. Cozy evening vibe."; break;
+      case 'handheld_usage': sceneDesc = "Scene: Blurred City Street Background (Bokeh). Natural day light."; break;
+      case 'aesthetic_room': sceneDesc = "Scene: White Minimalist Table. Soft shadows. Clean aesthetic."; break;
+      case 'balcony_urban': sceneDesc = "Scene: Apartment Balcony floor. Sunlight and plant shadows."; break;
+      case 'park_city': sceneDesc = "Scene: Public Park Stone Bench. Outdoor daylight."; break;
+      case 'hoi_an': sceneDesc = "Scene: Yellow Ancient Wall texture. Warm golden sunlight."; break;
+      case 'city_neon': sceneDesc = "Scene: Wet Street at Night. Neon reflections (Cyberpunk colors)."; break;
+      case 'vintage_street': sceneDesc = "Scene: Old Brick Wall. Nostalgic film colors."; break;
+      case 'custom': sceneDesc = `Scene: ${settings.customScenePrompt || "Professional background"}.`; break;
+    }
   }
 
-  let lightingDesc = settings.lighting.replace('_', ' ');
-  if (settings.lighting === 'natural_backlight') lightingDesc = "Lighting: Natural Backlight (Rim Light). The light source is behind the subject, creating a glowing outline/halo effect.";
+  // --- 4. LIGHTING & INTERACTION ---
+  let interactionPrompt = "";
+  const modelDesc = settings.humanStyle === 'vietnamese' ? "Vietnamese hand" : "European hand";
+  
+  // Interaction Logic (Simplified for clarity)
+  if (settings.humanInteraction !== 'none') {
+      const interactionType = settings.humanInteraction.replace('_', ' ');
+      if (currentDevice === 'mobile') {
+          interactionPrompt = `Interaction: A ${modelDesc} is interacting (${interactionType}). RAW FLASH PHOTO style. Imperfect, authentic.`;
+      } else {
+          interactionPrompt = `Interaction: Professional hand model (${modelDesc}) performing ${interactionType}. Perfect manicure. Soft commercial lighting.`;
+      }
+  } else {
+      interactionPrompt = "Interaction: NO HUMANS. Static Product Photography.";
+  }
+
+  let lightingPrompt = "";
+  switch(settings.lighting) {
+      case 'softbox': lightingPrompt = "Lighting: Large Octabox Soft light. Soft shadows."; break;
+      case 'hard_light': lightingPrompt = "Lighting: Direct Sunlight / Hard Strobe. Sharp, defined shadows."; break;
+      case 'backlight': lightingPrompt = "Lighting: Silhouette / Rim Light. Light source behind object."; break;
+      case 'natural_window': lightingPrompt = "Lighting: North-facing Window Light. Diffused and airy."; break;
+      case 'natural_backlight': lightingPrompt = "Lighting: Outdoor Golden Hour Backlight. Sun flare."; break;
+  }
 
   return `
-    ROLE: Expert Commercial Photographer / Cinematographer.
-    TASK: Place the input product into a new environment.
+    SYSTEM: You are a Physical Render Engine (Octane/Redshift).
     
-    PRODUCT PRESERVATION (CRITICAL):
-    - Keep product geometry 100% rigid.
-    - Preserve logos, text, and material properties (reflectivity, transparency).
+    *** INPUT OBJECT PROTOCOL ***
+    - The input image is the "Master 3D Asset". 
+    - PRESERVE Identity: Keep logos, text, and shape EXACTLY as provided.
+    - ADAPT Perspective: You MUST rotate/tilt the 3D Asset to match the requested CAMERA ANGLE below.
     
-    CONFIGURATION:
-    1. ${cameraSystemPrompt}
-    2. ${lensDesc}
-    3. ${angleDesc}
-    4. ${shotDesc}
-    5. ${filterPrompt}
+    ${masterColorProfile ? masterColorProfile : ""}
+
+    *** RENDER CONFIGURATION (MANDATORY) ***
+    ${anglePhysics}
     
-    SCENE & ACTION:
-    - ${interactionPrompt}
+    ${lensPhysics}
+    
+    *** SCENE PARAMETERS ***
     - ${sceneDesc}
-    - ${lightingDesc}
+    - ${lightingPrompt}
+    - ${interactionPrompt}
     - Mood: ${settings.mood}
     
-    EXECUTION: Photorealistic, physically accurate lighting and shadows.
+    EXECUTION:
+    - If Angle is TOP DOWN, the floor MUST be flat 2D.
+    - If Lens is 16mm, distort the perspective.
+    - If Lens is 85mm, compress the background.
+    - Output must be Photorealistic 4K.
   `;
 };
 
@@ -247,103 +275,60 @@ export const generateProductVideo = async (
     const ai = getClient();
     const basePrompt = constructPrompt(settings);
     
-    // Construct Video Specific Prompt with Vietnamese Handling
+    // Construct Video Specific Prompt
     const duration = settings.videoDuration || 5;
-    const hasVoice = settings.hasVoice ? "Audio: Include ambient background noise and specific product interaction sounds (ASMR)." : "Audio: Silent.";
+    const hasVoice = settings.hasVoice ? "Audio: Ambient ASMR sounds." : "Audio: Silent.";
     
-    // Vietnamese Prompt Handling
-    // We explicitly tell the model that the user input might be in Vietnamese and request it to interpret it as an action.
-    let specificAction = "Action: Gentle cinematic camera movement, product slowly rotating or being handled naturally.";
+    let specificAction = "Action: Cinematic product rotation.";
     if (settings.videoPrompt && settings.videoPrompt.trim() !== "") {
-        specificAction = `
-        USER INSTRUCTION (VIETNAMESE): "${settings.videoPrompt}"
-        INTERPRETATION: Translate the above Vietnamese instruction into a visual physics action and execute it. 
-        Ensure the movement is smooth and realistic.
-        `;
+        specificAction = `USER ACTION: ${settings.videoPrompt}`;
     }
 
     const fullVideoPrompt = `
       ${basePrompt}
-      TYPE: VIDEO GENERATION (VEO).
-      TARGET DURATION: ${duration} seconds.
-      FRAME RATE: 24fps.
-      
-      MOTION INSTRUCTIONS:
+      TYPE: VIDEO GENERATION.
+      DURATION: ${duration}s.
       ${specificAction}
-      
-      AUDIO: ${hasVoice}
-      
-      Requirements: 
-      - High temporal consistency.
-      - No morphing of the product.
-      - Social media commercial quality (1080p).
+      ${hasVoice}
     `;
 
     const base64Data = originalImageBase64.replace(/^data:image\/\w+;base64,/, "");
-
-    // Veo needs 16:9 or 9:16.
+    
     let aspectRatioStr = '16:9';
-    if (settings.aspectRatio === '9:16') {
-       aspectRatioStr = '9:16';
-    } else {
-       aspectRatioStr = '16:9'; 
-    }
+    if (settings.aspectRatio === '9:16') aspectRatioStr = '9:16';
 
-    console.log("Starting Video Generation with Veo...", fullVideoPrompt);
+    console.log("Starting Video Generation...", fullVideoPrompt);
     
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
-      image: {
-        imageBytes: base64Data,
-        mimeType: 'image/jpeg',
-      },
+      image: { imageBytes: base64Data, mimeType: 'image/jpeg' },
       prompt: fullVideoPrompt,
-      config: {
-        numberOfVideos: 1,
-        resolution: '1080p',
-        aspectRatio: aspectRatioStr as any
-      }
+      config: { numberOfVideos: 1, resolution: '1080p', aspectRatio: aspectRatioStr as any }
     });
 
-    console.log("Video operation started. Polling for completion...");
-
     while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5s
+      await new Promise(resolve => setTimeout(resolve, 5000));
       operation = await ai.operations.getVideosOperation({operation: operation});
-      console.log("Polling Veo status...");
     }
 
-    if (operation.error) {
-       throw new Error(`Veo Generation Failed: ${operation.error.message}`);
-    }
+    if (operation.error) throw new Error(`Veo Failed: ${operation.error.message}`);
 
     const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!videoUri) {
-      throw new Error("No video URI returned from Veo.");
-    }
+    if (!videoUri) throw new Error("No video URI.");
 
     const fetchUrl = `${videoUri}&key=${process.env.API_KEY}`;
     const videoResponse = await fetch(fetchUrl);
-    if (!videoResponse.ok) {
-       throw new Error(`Failed to download video bytes: ${videoResponse.statusText}`);
-    }
     const videoBlob = await videoResponse.blob();
     const videoObjectUrl = URL.createObjectURL(videoBlob);
 
-    // Mock token usage for video
-    // Based on PRICING_CONFIG estimates to keep stats aligned
-    // 2000 input + (1500 * duration)
-    const estInput = 2000;
-    const estOutput = 1500 * duration;
-
     return [{
       imageUrl: videoObjectUrl,
-      usage: { inputTokens: estInput, outputTokens: estOutput },
+      usage: { inputTokens: 2000, outputTokens: 1500 * duration },
       isVideo: true
     }];
 
   } catch (error) {
-    console.error("Gemini Video API Error:", error);
+    console.error("Video Error:", error);
     throw error;
   }
 };
@@ -355,12 +340,15 @@ const generateSingleImage = async (
   imagePart: any,
   settings: ImageSettings,
   targetAngle: ViewAngle,
-  targetDevice: PhotographyDevice
+  targetDevice: PhotographyDevice,
+  targetLens: FocalLength,
+  seed?: number,
+  masterColorProfile?: string // Pass the strict color profile
 ): Promise<GenResult> => {
   
   const prompt = `
-    ${constructPrompt(settings, targetAngle, targetDevice)}
-    OUTPUT: A single static image.
+    ${constructPrompt(settings, targetAngle, targetDevice, targetLens, masterColorProfile)}
+    OUTPUT: Single Photorealistic Image.
   `;
 
   let targetImageSize = "1K";
@@ -368,17 +356,25 @@ const generateSingleImage = async (
       targetImageSize = "4K";
   }
 
-  const response = await ai.models.generateContent({
-    model: settings.model, 
-    contents: {
-      parts: [imagePart, { text: prompt }]
-    },
-    config: {
+  // --- TEMPERATURE ADJUSTMENT ---
+  // Adjusted slightly UP (0.4) to allow the model to conform to the
+  // drastic geometric changes requested by the lens prompts, 
+  // while still keeping the seed fixed for scene consistency.
+  const generationConfig = {
+      temperature: 0.4, 
+      topP: 0.9,
+      topK: 40,
       imageConfig: {
          aspectRatio: settings.aspectRatio as any,
          imageSize: (settings.model === 'gemini-3-pro-image-preview') ? targetImageSize as any : undefined
-      }
-    }
+      },
+      seed: seed
+  };
+
+  const response = await ai.models.generateContent({
+    model: settings.model, 
+    contents: { parts: [imagePart, { text: prompt }] },
+    config: generationConfig
   });
 
   const usage = {
@@ -393,16 +389,14 @@ const generateSingleImage = async (
         return {
           imageUrl: `data:image/jpeg;base64,${part.inlineData.data}`,
           usage: usage,
-          isVideo: false
+          isVideo: false,
+          seed: seed
         };
-      }
-      if (part.text) {
-          throw new Error(part.text);
       }
     }
   }
   
-  throw new Error("API failed to generate image. Please try again.");
+  throw new Error("API failed to generate image.");
 };
 
 export const generateProductImage = async (
@@ -413,18 +407,30 @@ export const generateProductImage = async (
     const ai = getClient();
     const imagePart = prepareImagePart(originalImageBase64);
     
+    // Default Fallbacks
     const viewAngles: ViewAngle[] = settings.viewAngle.length > 0 ? settings.viewAngle : ['eye_level'];
+    const focalLengths: FocalLength[] = settings.focalLength.length > 0 ? settings.focalLength : ['50mm'];
     const countPerAngle = settings.outputCount || 1;
-    // Default to professional if empty, though UI prevents this
     const devices: PhotographyDevice[] = settings.photographyDevice.length > 0 ? settings.photographyDevice : ['professional'];
     
+    // --- BATCH SEED STRATEGY ---
+    // We use ONE seed for the whole batch to keep lighting/furniture consistent.
+    const batchSeed = Math.floor(Math.random() * 2147483647);
+
+    // --- COLOR SYNC STRATEGY ---
+    // Generate ONE Master Color Profile for the entire batch if sync is enabled
+    const masterColorProfile = getMasterColorProfile(settings);
+
     const allPromises: Promise<GenResult>[] = [];
 
-    // Loop logic: Device -> Angle -> Count
+    // Loop logic: Device -> Angle -> Lens -> Count
     for (const device of devices) {
         for (const angle of viewAngles) {
-            for (let i = 0; i < countPerAngle; i++) {
-                allPromises.push(generateSingleImage(ai, imagePart, settings, angle, device));
+            for (const lens of focalLengths) {
+                for (let i = 0; i < countPerAngle; i++) {
+                    // Pass the Master Color Profile to every request
+                    allPromises.push(generateSingleImage(ai, imagePart, settings, angle, device, lens, batchSeed, masterColorProfile));
+                }
             }
         }
     }

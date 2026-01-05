@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useState } from 'react';
-import { ImageSettings, DEFAULT_SETTINGS, ViewAngle, PhotographyDevice, FilterType } from '../types';
+import { ImageSettings, DEFAULT_SETTINGS, ViewAngle, PhotographyDevice, FilterType, FocalLength } from '../types';
 import { 
   SCENES, TIMES, MOODS, LIGHTING, PRO_LENSES, MOBILE_LENSES,
   ASPECT_RATIOS, VIDEO_ASPECT_RATIOS, INTERACTIONS, VIDEO_INTERACTIONS, HUMAN_STYLES, VIEW_ANGLES, 
@@ -42,14 +42,18 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
     const validMobileLenses = ['16mm', '24mm', '85mm'];
     const validProLenses = ['16mm', '50mm', '85mm'];
 
-    if (isOnlyMobile) {
-       if (!validMobileLenses.includes(settings.focalLength)) {
-          updateField('focalLength', '24mm'); // Default to 1x
-       }
-    } else {
-       if (!validProLenses.includes(settings.focalLength)) {
-          updateField('focalLength', '50mm'); // Default to Standard
-       }
+    const currentFocalLengths = settings.focalLength || [];
+    
+    // Filter out invalid lenses for current device
+    const filteredLenses = currentFocalLengths.filter(lens => 
+      isOnlyMobile ? validMobileLenses.includes(lens) : validProLenses.includes(lens)
+    );
+
+    // If all lenses were invalid or empty, set default
+    if (filteredLenses.length === 0) {
+       updateField('focalLength', isOnlyMobile ? ['24mm'] : ['50mm']);
+    } else if (filteredLenses.length !== currentFocalLengths.length) {
+       updateField('focalLength', filteredLenses);
     }
   }, [settings.photographyDevice]);
 
@@ -92,6 +96,28 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
       updateField('viewAngle', [...currentAngles, angle]);
     }
   };
+  
+  // Multi-Angle Presets
+  const setMultiAnglePreset = (count: 3 | 4 | 1) => {
+    if (count === 1) {
+      updateField('viewAngle', ['eye_level']);
+    } else if (count === 3) {
+      updateField('viewAngle', ['eye_level', 'high_angle_45', 'top_down']);
+    } else if (count === 4) {
+      updateField('viewAngle', ['eye_level', 'high_angle_45', 'low_angle', 'top_down']);
+    }
+  };
+
+  const toggleFocalLength = (lens: FocalLength) => {
+    const currentLenses = settings.focalLength || [];
+    if (currentLenses.includes(lens)) {
+      if (currentLenses.length > 1) {
+        updateField('focalLength', currentLenses.filter(l => l !== lens));
+      }
+    } else {
+      updateField('focalLength', [...currentLenses, lens]);
+    }
+  };
 
   const updateWatermark = <K extends keyof ImageSettings['watermark']>(
     field: K, 
@@ -119,10 +145,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   const getFilterStyle = (type: FilterType): React.CSSProperties => {
     switch(type) {
       case 'clean': 
-        // Bright, slightly lower contrast, high key look
         return { filter: 'brightness(1.15) contrast(0.95) saturate(1.1)' };
       case 'cinematic': 
-        // High contrast, slightly desaturated, dramatic
         return { filter: 'contrast(1.25) saturate(0.9) sepia(0.15) brightness(0.9)' };
       case 'natural':
       default: 
@@ -132,7 +156,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
 
   const totalRenderCount = isVideoMode 
     ? 1 
-    : (settings.outputCount || 1) * (settings.viewAngle?.length || 1) * (settings.photographyDevice?.length || 1);
+    : (settings.outputCount || 1) * (settings.viewAngle?.length || 1) * (settings.photographyDevice?.length || 1) * (settings.focalLength?.length || 1);
   
   const activeShotSizes = isVideoMode ? VIDEO_SHOT_SIZES : SHOT_SIZES;
   const activeInteractions = isVideoMode ? VIDEO_INTERACTIONS : INTERACTIONS;
@@ -154,10 +178,64 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 md:pb-4 scrollbar-thin scrollbar-thumb-lab-border">
         
+        {/* --- NEW: MULTI-ANGLE BATCH RENDER SECTION --- */}
+        {!isVideoMode && (
+          <section className="bg-lab-panel p-3 rounded border border-lab-border animate-in slide-in-from-top-1">
+             <div className="flex items-center justify-between mb-3">
+               <div className="flex items-center gap-2 text-lab-yellow">
+                 <Icons.Layers className="w-4 h-4" />
+                 <span className="text-[10px] font-bold uppercase tracking-wider">Bộ Render Đa Góc (Batch)</span>
+               </div>
+               
+               {/* Color Sync Toggle */}
+               <label className="flex items-center gap-2 cursor-pointer group" title="Bắt buộc tất cả ảnh phải có cùng tông màu/ánh sáng">
+                  <span className={`text-[9px] font-bold transition-colors ${settings.isColorSync ? 'text-lab-yellow' : 'text-gray-500'}`}>
+                    Đồng Bộ Màu
+                  </span>
+                  <div className="relative inline-flex items-center">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer" 
+                      checked={settings.isColorSync} 
+                      onChange={(e) => updateField('isColorSync', e.target.checked)} 
+                    />
+                    <div className="w-7 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-lab-yellow"></div>
+                  </div>
+               </label>
+             </div>
+             
+             <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded mb-2">
+                <button
+                   onClick={() => setMultiAnglePreset(1)}
+                   className={`py-2 text-[10px] font-bold rounded transition-all ${settings.viewAngle.length === 1 ? 'bg-lab-border text-gray-300' : 'text-gray-500 hover:text-white'}`}
+                >
+                   1 Góc
+                </button>
+                <button
+                   onClick={() => setMultiAnglePreset(3)}
+                   className={`py-2 text-[10px] font-bold rounded transition-all flex flex-col items-center leading-none gap-0.5 ${settings.viewAngle.length === 3 ? 'bg-lab-yellow text-black shadow-sm' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                >
+                   <span>Bộ 3 Góc</span>
+                   <span className="text-[8px] font-normal opacity-80">(Standard)</span>
+                </button>
+                <button
+                   onClick={() => setMultiAnglePreset(4)}
+                   className={`py-2 text-[10px] font-bold rounded transition-all flex flex-col items-center leading-none gap-0.5 ${settings.viewAngle.length === 4 ? 'bg-lab-yellow text-black shadow-sm' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                >
+                   <span>Bộ 4 Góc</span>
+                   <span className="text-[8px] font-normal opacity-80">(Full)</span>
+                </button>
+             </div>
+             
+             <p className="text-[9px] text-gray-400 leading-relaxed px-1">
+               <span className="text-lab-yellow font-bold">Lưu ý:</span> {settings.isColorSync ? 'Hệ thống sẽ KHÓA White Balance để màu sắc đồng nhất.' : 'Màu sắc sẽ thay đổi ngẫu nhiên theo từng góc chụp.'}
+             </p>
+          </section>
+        )}
+
         {/* --- VIDEO SPECIFIC CONTROLS --- */}
         {isVideoMode && (
           <section className="space-y-4 animate-in slide-in-from-right-2">
-            {/* ... Video Specific Controls (Prompt, Duration, Voice) ... */}
             <div className="space-y-2">
                <div className="flex items-center gap-2 text-lab-yellow">
                   <Icons.Type className="w-4 h-4" />
@@ -188,7 +266,6 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                   className="w-full accent-lab-yellow h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                 />
             </div>
-            {/* Voice Toggle */}
             <div className="bg-lab-panel p-3 rounded border border-lab-border flex items-center justify-between active:bg-lab-panel/80">
               <div className="flex items-center gap-2 text-white">
                   {settings.hasVoice ? <Icons.Sun className="w-4 h-4 text-lab-yellow" /> : <Icons.EyeOff className="w-4 h-4 text-gray-500" />}
@@ -229,7 +306,6 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
             </div>
           </div>
           
-          {/* Interaction & Scene Customization */}
            <div className="space-y-2">
             <label className="text-xs text-gray-400">Tương Tác {isVideoMode ? '(Motion)' : '(Human)'}</label>
             <div className="relative">
@@ -267,7 +343,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                  />
              </div>
           )}
-
+          
           <div className="grid grid-cols-2 gap-2">
              <div className="space-y-1">
                 <label className="text-xs text-gray-400">Thời Gian</label>
@@ -304,7 +380,6 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
             <span className="text-xs font-bold uppercase tracking-wider">Quang Học & Ánh Sáng</span>
           </div>
 
-          {/* Device Selector */}
           <div className="grid grid-cols-2 gap-2">
             {PHOTOGRAPHY_DEVICES.map(device => {
                let label = device.label;
@@ -327,23 +402,28 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
           </div>
 
           <div className="space-y-2">
-             <label className="text-xs text-gray-400">Tiêu Cự (Hiệu ứng xóa phông)</label>
+             <label className="text-xs text-gray-400 flex items-center justify-between">
+                <span>Tiêu Cự</span>
+             </label>
              <div className="grid grid-cols-3 gap-2">
-                {activeLenses.map(lens => (
-                  <button
-                    key={lens.value}
-                    onClick={() => updateField('focalLength', lens.value)}
-                    className={`flex flex-col items-center justify-center p-2.5 rounded border transition-all touch-manipulation active:scale-95
-                      ${settings.focalLength === lens.value 
-                        ? 'border-lab-yellow bg-lab-yellow/10 text-lab-yellow' 
-                        : 'border-lab-border text-gray-400 hover:border-gray-500'
-                      }
-                    `}
-                  >
-                    <span className="text-[10px] font-bold">{lens.label}</span>
-                    <span className="text-[8px] text-gray-500 hidden md:block">{lens.desc.split('.')[0]}</span>
-                  </button>
-                ))}
+                {activeLenses.map(lens => {
+                  const isSelected = (settings.focalLength || []).includes(lens.value);
+                  return (
+                    <button
+                      key={lens.value}
+                      onClick={() => updateField('focalLength', [lens.value])} 
+                      className={`flex flex-col items-center justify-center p-2.5 rounded border transition-all touch-manipulation active:scale-95 relative
+                        ${isSelected 
+                          ? 'border-lab-yellow bg-lab-yellow/10 text-lab-yellow font-bold' 
+                          : 'border-lab-border text-gray-400 hover:border-gray-500'
+                        }
+                      `}
+                    >
+                      <span className="text-[10px]">{lens.label}</span>
+                      <span className="text-[8px] text-gray-500 hidden md:block">{lens.desc.split('.')[0]}</span>
+                    </button>
+                  );
+                })}
              </div>
           </div>
 
@@ -364,10 +444,13 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
               </div>
           </div>
 
-          {/* 2. View Angle (Góc Chụp) - Moved below Shot Size */}
+          {/* 2. View Angle (Góc Chụp) - Updated for Multi-Select */}
           {!isVideoMode && (
              <div className="space-y-2">
-                <label className="text-xs text-gray-400">Góc Chụp (Cao độ máy)</label>
+                <label className="text-xs text-gray-400 flex items-center justify-between">
+                   <span>Góc Chụp (Đa Góc)</span>
+                   {settings.viewAngle.length > 1 && <span className="text-[9px] text-lab-yellow font-bold italic">{settings.viewAngle.length} góc được chọn</span>}
+                </label>
                 <div className="grid grid-cols-1 gap-2">
                    {VIEW_ANGLES.map(angle => {
                      const isSelected = (settings.viewAngle || []).includes(angle.value);
