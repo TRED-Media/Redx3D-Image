@@ -16,18 +16,13 @@ const CostModal: React.FC<CostModalProps> = ({ isOpen, onClose, onConfirm, setti
 
   const currentModel = AI_MODELS.find(m => m.value === settings.model);
   const pricing = PRICING_CONFIG.getPrice(settings.model);
-
-  // Use the centralized calculator to ensure numbers match LeftSidebar exactly
   const calculation = PRICING_CONFIG.calculateEstimatedCost(settings);
 
-  // Derive USD costs for display breakdown
   const costInputUSD = (calculation.totalInputTokens / 1_000_000) * pricing.INPUT;
   const costOutputUSD = (calculation.totalOutputTokens / 1_000_000) * pricing.OUTPUT;
-  
   const costInputVND = costInputUSD * PRICING_CONFIG.VND_RATE;
   const costOutputVND = costOutputUSD * PRICING_CONFIG.VND_RATE;
 
-  // Percentage for progress bar visualization
   const totalUSD = costInputUSD + costOutputUSD;
   const inputPercent = totalUSD > 0 ? (costInputUSD / totalUSD) * 100 : 0;
   const outputPercent = totalUSD > 0 ? (costOutputUSD / totalUSD) * 100 : 0;
@@ -36,82 +31,90 @@ const CostModal: React.FC<CostModalProps> = ({ isOpen, onClose, onConfirm, setti
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
+        className="absolute inset-0 bg-lab-text/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
-      {/* Modal Content */}
-      <div className="relative bg-lab-panel border border-lab-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200 font-mono">
+      {/* Modal Content - Receipt Style */}
+      <div className="relative bg-[#FFFBF0] border-4 border-lab-text rounded-sm shadow-[10px_10px_0px_#264653] w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200 font-mono text-lab-text transform rotate-1">
         
+        {/* ZigZag Border Top (CSS Trick) */}
+        <div className="h-2 w-full bg-lab-yellow/80"></div>
+
         {/* Header */}
-        <div className="p-4 border-b border-lab-border bg-lab-dark flex items-center gap-3">
-          <div className="p-2 bg-lab-yellow/10 rounded-full">
-            <Icons.Box className="w-5 h-5 text-lab-yellow" />
+        <div className="p-6 border-b-2 border-dashed border-lab-text/20 bg-lab-panel/30 flex flex-col items-center gap-2 text-center">
+          <div className="p-3 bg-lab-yellow rounded-full border-2 border-lab-text text-white shadow-sm">
+            <Icons.Box className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-white font-bold text-lg font-sans">Báo Giá Dự Kiến</h3>
-            <p className="text-xs text-lab-muted font-sans">Model: <span className="text-lab-yellow font-mono">{currentModel?.label}</span></p>
+            <h3 className="text-2xl font-black uppercase tracking-wider vintage-font">HÓA ĐƠN DỊCH VỤ</h3>
+            <p className="text-xs text-lab-muted font-bold tracking-widest mt-1">REDx 3D LABORATORY</p>
           </div>
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-5">
+        <div className="p-6 space-y-6">
           
+          <div className="flex justify-between items-end border-b-2 border-lab-text/10 pb-2">
+             <span className="text-xs font-bold text-lab-muted">SẢN PHẨM / DỊCH VỤ</span>
+             <span className="text-sm font-bold text-lab-yellowHover">{currentModel?.label}</span>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
-             <div className="bg-black/40 p-3 rounded border border-lab-border">
-                <p className="text-xs text-gray-500 mb-1">Số lượng Output</p>
-                <p className="text-xl font-bold text-white">
+             <div className="bg-white p-3 rounded border-2 border-lab-text/10">
+                <p className="text-[10px] text-lab-muted uppercase font-bold mb-1">Số lượng Output</p>
+                <p className="text-2xl font-black text-lab-text">
                     {calculation.count} 
-                    <span className="text-xs font-normal ml-1">{calculation.isVideo ? 'video' : 'ảnh'}</span>
+                    <span className="text-sm font-medium ml-1 text-lab-muted">{calculation.isVideo ? 'vid' : 'img'}</span>
                 </p>
              </div>
-             <div className="bg-black/40 p-3 rounded border border-lab-border">
-                <p className="text-xs text-gray-500 mb-1">Đơn giá Output</p>
-                <p className="text-xl font-bold text-white">${pricing.OUTPUT}<span className="text-[10px] text-gray-500 font-normal">/1M</span></p>
+             <div className="bg-white p-3 rounded border-2 border-lab-text/10">
+                <p className="text-[10px] text-lab-muted uppercase font-bold mb-1">Đơn giá</p>
+                <p className="text-2xl font-black text-lab-text">${pricing.OUTPUT}<span className="text-[10px] text-lab-muted font-medium">/1M</span></p>
              </div>
           </div>
 
-          <div className="space-y-3 border-t border-lab-border pt-4">
+          <div className="space-y-3 pt-2">
              {/* Input Row */}
-             <div className="flex justify-between items-center text-xs">
-                <span className="text-gray-400">Đầu vào ({calculation.totalInputTokens.toLocaleString()} tokens)</span>
-                <span className="text-gray-300">{Math.round(costInputVND).toLocaleString('vi-VN')} đ</span>
+             <div className="flex justify-between items-center text-xs font-medium">
+                <span className="text-lab-muted">Chi phí Input ({calculation.totalInputTokens.toLocaleString()})</span>
+                <span className="text-lab-text">{Math.round(costInputVND).toLocaleString('vi-VN')} đ</span>
              </div>
-             <div className="w-full bg-gray-800 h-1 rounded-full"><div className="bg-blue-500 h-1 rounded-full" style={{width: `${Math.max(5, inputPercent)}%`}}></div></div>
+             <div className="w-full bg-lab-text/10 h-2 rounded-full border border-lab-text/10"><div className="bg-lab-light h-full rounded-full" style={{width: `${Math.max(5, inputPercent)}%`}}></div></div>
 
              {/* Output Row */}
-             <div className="flex justify-between items-center text-xs">
-                <span className="text-gray-400">Đầu ra ({calculation.totalOutputTokens.toLocaleString()} tokens)</span>
-                <span className="text-gray-300">{Math.round(costOutputVND).toLocaleString('vi-VN')} đ</span>
+             <div className="flex justify-between items-center text-xs font-medium">
+                <span className="text-lab-muted">Chi phí Output ({calculation.totalOutputTokens.toLocaleString()})</span>
+                <span className="text-lab-text">{Math.round(costOutputVND).toLocaleString('vi-VN')} đ</span>
              </div>
-             <div className="w-full bg-gray-800 h-1 rounded-full"><div className="bg-lab-yellow h-1 rounded-full" style={{width: `${Math.max(5, outputPercent)}%`}}></div></div>
+             <div className="w-full bg-lab-text/10 h-2 rounded-full border border-lab-text/10"><div className="bg-lab-yellow h-full rounded-full" style={{width: `${Math.max(5, outputPercent)}%`}}></div></div>
           </div>
 
-          <div className="flex items-center justify-between bg-lab-yellow/10 p-4 rounded border border-lab-yellow/30">
-             <span className="text-sm font-bold text-lab-yellow font-sans">TỔNG DỰ KIẾN</span>
-             <span className="text-2xl font-bold text-white">~{calculation.costVND.toLocaleString('vi-VN')} đ</span>
+          <div className="flex items-center justify-between bg-lab-yellow/10 p-4 rounded border-2 border-lab-yellow border-dashed">
+             <span className="text-sm font-black text-lab-yellowHover uppercase">TỔNG THANH TOÁN</span>
+             <span className="text-2xl font-black text-lab-text">~{calculation.costVND.toLocaleString('vi-VN')} đ</span>
           </div>
 
-          <p className="text-[10px] text-gray-500 italic text-center font-sans">
-             *Giá trị token dựa trên bảng giá T12/2025. Chi phí thực tế có thể thay đổi nhỏ.
+          <p className="text-[10px] text-lab-muted italic text-center font-medium bg-white p-2 rounded">
+             *Mã giao dịch: {new Date().toLocaleTimeString()} - {new Date().toLocaleDateString()}
           </p>
 
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-lab-border bg-lab-dark flex gap-3 font-sans">
+        <div className="p-4 border-t-2 border-dashed border-lab-text/20 bg-lab-panel/30 flex gap-3">
           <button 
             onClick={onClose}
-            className="flex-1 py-3 px-4 rounded font-bold text-sm bg-transparent border border-lab-border text-gray-400 hover:text-white hover:border-gray-500 transition-all"
+            className="flex-1 py-3 px-4 rounded-lg font-bold text-sm bg-white border-2 border-lab-text/10 text-lab-muted hover:text-lab-text hover:border-lab-text transition-all"
           >
-            Hủy Bỏ
+            HỦY BỎ
           </button>
           <button 
             onClick={onConfirm}
-            className="flex-1 py-3 px-4 rounded font-bold text-sm bg-lab-yellow text-black hover:bg-lab-yellowHover shadow-[0_0_15px_rgba(255,215,0,0.3)] transition-all flex items-center justify-center gap-2"
+            className="flex-1 py-3 px-4 rounded-lg font-bold text-sm bg-lab-yellow text-white hover:bg-lab-yellowHover border-2 border-transparent shadow-md transition-all flex items-center justify-center gap-2 active:translate-y-0.5"
           >
             <Icons.Check className="w-4 h-4" />
-            Xác Nhận & Render
+            XÁC NHẬN
           </button>
         </div>
 

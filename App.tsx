@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import LeftSidebar from './components/LeftSidebar';
 import RightSidebar from './components/RightSidebar';
@@ -26,6 +26,26 @@ const App: React.FC = () => {
   const [processingQueue, setProcessingQueue] = useState<string[]>([]);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
   
+  // DARK MODE STATE
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Check local storage or system preference
+    const saved = localStorage.getItem('theme');
+    return saved === 'dark';
+  });
+
+  // Apply Dark Mode Effect
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleTheme = () => setIsDarkMode(prev => !prev);
+  
   // LIFETIME STATS (Persistent)
   const [lifetimeStats, setLifetimeStats] = useState<ProjectStats>({
     totalImagesGenerated: 0,
@@ -38,9 +58,61 @@ const App: React.FC = () => {
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [isRightOpen, setIsRightOpen] = useState(false);
   const [isComparisonMode, setIsComparisonMode] = useState(false);
+  
+  // NEW: State for Mobile History Toggle
+  const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
+
+  // --- ZOOM & PAN STATE ---
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
 
   const selectedImage = history.find(img => img.id === selectedId);
   const isProcessing = processingQueue.length > 0;
+
+  // Reset zoom when image changes
+  useEffect(() => {
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  }, [selectedId]);
+
+  // --- ZOOM HANDLERS ---
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.5, 5));
+  const handleZoomOut = () => {
+    setZoomLevel(prev => {
+        const next = Math.max(prev - 0.5, 1);
+        if (next === 1) setPanPosition({ x: 0, y: 0 });
+        return next;
+    });
+  };
+  const handleResetZoom = () => {
+      setZoomLevel(1);
+      setPanPosition({ x: 0, y: 0 });
+  };
+
+  // --- DRAG HANDLERS ---
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    if (zoomLevel <= 1) return;
+    setIsDragging(true);
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    dragStartRef.current = { x: clientX - panPosition.x, y: clientY - panPosition.y };
+  };
+
+  const handleDragMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDragging || zoomLevel <= 1) return;
+    if ('touches' in e) e.preventDefault(); // Prevent scroll on mobile
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    
+    setPanPosition({
+        x: clientX - dragStartRef.current.x,
+        y: clientY - dragStartRef.current.y
+    });
+  };
+
+  const handleDragEnd = () => setIsDragging(false);
 
   // -- Load History & Stats from DB --
   useEffect(() => {
@@ -129,6 +201,7 @@ const App: React.FC = () => {
       setSelectedId(newImages[0].id);
     }
     setIsLeftOpen(false); // Close sidebar on mobile after upload interaction
+    setIsMobileHistoryOpen(true); // Auto-open history on mobile when uploading
   };
 
   const handleDelete = async (id: string) => {
@@ -220,6 +293,7 @@ const App: React.FC = () => {
     
     if (newProcessingIds.length > 0) setSelectedId(newProcessingIds[0]);
     setProcessingQueue(prev => [...prev, ...newProcessingIds]);
+    setIsMobileHistoryOpen(true); // Auto-open history on mobile to show progress
 
     try {
       let generatedResults;
@@ -307,14 +381,37 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error("Generation Error:", error);
       
-      if (aistudio && (error.message?.includes("403") || error.message?.includes("not found"))) {
+      const getErrorMsg = (err: any) => {
+        if (typeof err === 'string') return err;
+        if (err?.message) return err.message;
+        if (err?.error?.message) return err.error.message;
+        return JSON.stringify(err);
+      };
+      
+      const errorMsg = getErrorMsg(error);
+      const errorStr = JSON.stringify(error);
+
+      // Robust check for Permissions/Auth errors (403) or Not Found (404)
+      const isAuthError = 
+         errorMsg.includes("403") || 
+         errorMsg.includes("PERMISSION_DENIED") ||
+         errorMsg.includes("permission") ||
+         errorStr.includes("PERMISSION_DENIED") ||
+         error?.status === 403;
+
+      const isNotFoundError = 
+         errorMsg.includes("not found") || 
+         errorMsg.includes("404") ||
+         error?.status === 404;
+
+      if (aistudio && (isAuthError || isNotFoundError)) {
         try {
+            console.log("Triggering API Key selection due to error:", errorMsg);
             await aistudio.openSelectKey();
         } catch (e) { /* ignore */ }
       }
       
       // Update DB for failed items
-      const errorMsg = error.message;
       setHistory(prev => {
          const newState = prev.map(img => {
             if (newProcessingIds.includes(img.id)) {
@@ -341,21 +438,19 @@ const App: React.FC = () => {
   };
 
   return (
-    // LG Breakpoint forces Tablet Portrait to behave like Mobile (Col stack)
-    // Landscape Mobile will benefit from compact vertical styling
-    <div className="flex flex-col lg:flex-row h-screen w-screen bg-black text-white font-sans overflow-hidden">
+    // FIX: Use 100dvh (dynamic viewport height) instead of h-screen to handle mobile browser address bars
+    <div className="flex flex-col lg:flex-row h-[100dvh] w-screen bg-lab-black text-lab-text font-sans overflow-hidden transition-colors duration-300">
       
-      {/* Mobile/Tablet Header - Optimized height for Landscape */}
-      <div className="lg:hidden h-14 landscape:h-12 bg-lab-dark border-b border-lab-border flex items-center justify-between px-3 z-40 shrink-0 shadow-md">
-         <button onClick={() => setIsLeftOpen(true)} className="p-2 -ml-2 text-lab-yellow active:scale-95 transition-transform"><Icons.Layers className="w-6 h-6" /></button>
+      {/* Mobile/Tablet Header - No Orange Logo */}
+      <div className="lg:hidden h-14 landscape:h-12 bg-lab-dark border-b-2 border-lab-border flex items-center justify-between px-3 z-40 shrink-0 shadow-sm transition-colors duration-300">
+         <button onClick={() => setIsLeftOpen(true)} className="p-2 -ml-2 text-lab-text hover:text-lab-yellow active:scale-95 transition-transform"><Icons.Layers className="w-6 h-6" /></button>
          <div className="flex items-center gap-1.5">
-            <div className="w-5 h-5 bg-lab-yellow rounded flex items-center justify-center"><span className="text-black font-bold text-[10px]">R</span></div>
-            <span className="text-white text-xs font-bold tracking-wider uppercase">REDx 3D Lab</span>
+            <span className="text-lab-text text-lg font-black tracking-widest uppercase vintage-font">REDx 3D</span>
          </div>
-         <button onClick={() => setIsRightOpen(true)} className="p-2 -mr-2 text-lab-yellow relative active:scale-95 transition-transform">
+         <button onClick={() => setIsRightOpen(true)} className="p-2 -mr-2 text-lab-text hover:text-lab-yellow relative active:scale-95 transition-transform">
             <Icons.Settings className="w-6 h-6" />
             {selectedImage && selectedImage.status !== 'processing' && (
-               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse border border-lab-dark"></span>
+               <span className="absolute top-2 right-2 w-2 h-2 bg-lab-yellow rounded-full animate-pulse border border-lab-dark"></span>
             )}
          </button>
       </div>
@@ -363,7 +458,7 @@ const App: React.FC = () => {
       {/* Mobile Backdrop */}
       {(isLeftOpen || isRightOpen) && (
         <div 
-          className="fixed inset-0 bg-black/80 z-40 lg:hidden backdrop-blur-sm transition-opacity animate-in fade-in" 
+          className="fixed inset-0 bg-lab-text/50 z-40 lg:hidden backdrop-blur-sm transition-opacity animate-in fade-in" 
           onClick={() => { setIsLeftOpen(false); setIsRightOpen(false); }} 
         />
       )}
@@ -371,27 +466,35 @@ const App: React.FC = () => {
       {/* Left Sidebar Drawer */}
       <div className={`fixed inset-y-0 left-0 z-50 w-[85%] sm:w-80 md:w-80 lg:w-80 transform transition-transform duration-300 ease-out lg:relative lg:translate-x-0 shadow-2xl ${isLeftOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <LeftSidebar 
-          history={history} onUpload={handleUpload} onSelectImage={setSelectedId} selectedId={selectedId} onDelete={handleDelete} onClose={() => setIsLeftOpen(false)} 
-          projectStats={lifetimeStats} // PASS LIFETIME STATS HERE
-          settings={settings} onUpdateSettings={setSettings}
-          onResetStats={handleResetStats} // Pass Reset Handler
+          history={history} 
+          onUpload={handleUpload} 
+          onSelectImage={setSelectedId} 
+          selectedId={selectedId} 
+          onDelete={handleDelete} 
+          onClose={() => setIsLeftOpen(false)} 
+          projectStats={lifetimeStats} 
+          settings={settings} 
+          onUpdateSettings={setSettings}
+          onResetStats={handleResetStats}
+          isDarkMode={isDarkMode}
+          onToggleTheme={toggleTheme}
         />
       </div>
 
-      <main className="flex-1 bg-lab-black relative flex flex-col min-w-0 h-full">
-        {/* Top Toolbar (Desktop) / Info Bar (Mobile) */}
-        <div className="h-10 md:h-14 shrink-0 border-b border-lab-border flex items-center justify-between px-4 md:px-6 bg-lab-black/80 backdrop-blur-md z-10 relative">
+      <main className="flex-1 bg-lab-black relative flex flex-col min-w-0 h-full transition-colors duration-300">
+        {/* Top Toolbar (Desktop) - Updated to Vintage Style */}
+        <div className="h-10 md:h-14 shrink-0 border-b-2 border-lab-border flex items-center justify-between px-4 md:px-6 bg-lab-dark/95 backdrop-blur-md z-10 relative text-lab-text shadow-sm transition-colors duration-300">
           <div className="flex items-center gap-4 w-1/3">
              {selectedImage && (
-               <span className="text-[10px] md:text-xs text-lab-muted font-mono uppercase tracking-widest animate-in fade-in slide-in-from-left-2 truncate">
-                 ID: <span className="text-lab-yellow">{selectedImage.id.substring(0, 8)}</span>
+               <span className="text-[10px] md:text-xs text-lab-muted font-black font-mono uppercase tracking-widest animate-in fade-in slide-in-from-left-2 truncate bg-lab-panel px-2 py-1 rounded border border-lab-border/30">
+                 ID: <span className="text-lab-yellowHover">{selectedImage.id.substring(0, 8)}</span>
                </span>
              )}
           </div>
           
           <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none w-full justify-center">
-             <h1 className="hidden md:flex items-center gap-2 text-sm lg:text-base font-bold tracking-tight text-white uppercase opacity-90 drop-shadow-sm">
-                Xử lí ảnh sản phẩm cùng <span className="text-lab-yellow">REDx 3D Lab</span>
+             <h1 className="hidden md:flex items-center gap-2 text-sm lg:text-lg font-black tracking-tight text-lab-text uppercase vintage-font">
+                Xử lí ảnh cùng <span className="text-lab-yellow underline decoration-4 decoration-wavy underline-offset-4">REDx 3D Lab</span>
              </h1>
           </div>
 
@@ -399,7 +502,7 @@ const App: React.FC = () => {
              {selectedImage && selectedImage.status === 'completed' && !selectedImage.isVideo && (
                <button 
                   onClick={() => setIsComparisonMode(!isComparisonMode)}
-                  className={`flex items-center gap-2 px-2 md:px-3 py-1 md:py-1.5 rounded text-[10px] md:text-xs font-bold transition-all border ${isComparisonMode ? 'bg-lab-yellow text-black border-lab-yellow' : 'bg-transparent text-gray-400 border-gray-600 hover:text-white'}`}
+                  className={`flex items-center gap-2 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-[10px] md:text-xs font-black transition-all border-2 shadow-sm active:translate-y-0.5 ${isComparisonMode ? 'bg-lab-text text-white border-lab-text' : 'bg-lab-panel text-lab-text border-lab-border hover:bg-white'}`}
                >
                   <Icons.Layers className="w-3 h-3 md:w-3 md:h-3" />
                   <span className="hidden md:inline">So Sánh (Y)</span>
@@ -410,7 +513,7 @@ const App: React.FC = () => {
             {selectedImage && selectedImage.status === 'completed' && (
               <button 
                 onClick={() => handleDownload(selectedImage)}
-                className="group flex items-center gap-2 px-2 md:px-4 py-1 md:py-1.5 bg-lab-panel hover:bg-lab-yellow hover:text-black border border-lab-border hover:border-lab-yellow rounded text-[10px] md:text-xs font-bold transition-all duration-300 shadow-md"
+                className="group flex items-center gap-2 px-2 md:px-4 py-1 md:py-1.5 bg-lab-yellow hover:bg-lab-yellowHover text-white border-2 border-lab-text/20 hover:border-lab-text rounded-lg text-[10px] md:text-xs font-black transition-all duration-300 shadow-md active:translate-y-0.5"
               >
                 <Icons.Download className="w-3 h-3" />
                 <span className="hidden md:inline">Xuất {selectedImage.isVideo ? 'Video' : '4K'}</span>
@@ -420,59 +523,61 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Canvas Area */}
-        <div className="flex-1 flex flex-col items-center justify-center p-2 md:p-6 lg:p-10 overflow-hidden relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1a1a1a] to-black">
-          <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#333 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+        {/* Canvas Area - Important Layout Fix: flex-1 and min-h-0 to allow shrinking */}
+        <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-2 md:p-6 lg:p-10 overflow-hidden relative bg-lab-black transition-colors duration-300">
+          {/* Paper Texture Overlay (Inverted in Dark Mode via mix-blend-mode if needed, but overlay handles it well) */}
+          <div className="absolute inset-0 opacity-10 pointer-events-none mix-blend-overlay" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }}></div>
 
           {!selectedImage ? (
-            // --- REDESIGNED HERO BANNER (Massive & Eye-Catching) ---
-            // Added landscape optimizations (less padding, smaller scale)
-            <div className="text-center animate-in fade-in zoom-in duration-500 w-full max-w-4xl px-6 z-10">
-              <div className="bg-black/30 border border-lab-border/30 backdrop-blur-sm p-8 md:p-16 landscape:p-6 landscape:gap-4 rounded-3xl shadow-[0_0_80px_rgba(0,0,0,0.6)] flex flex-col items-center gap-8 md:gap-10">
-                  
-                  {/* Huge Icon Container - Smaller in landscape */}
+            // --- HERO BANNER ---
+            // Removed rotation. Optimized max-width and padding for landscape mode.
+            <div data-theme="light" className="text-center animate-in fade-in zoom-in duration-500 w-full max-w-3xl px-4 z-10 flex items-center justify-center">
+              <div 
+                className="bg-lab-panel border-4 border-lab-border w-full p-6 md:p-10 lg:p-14 landscape:p-4 rounded-3xl shadow-[8px_8px_0px_0px_rgba(38,70,83,0.3)] flex flex-col items-center gap-4 md:gap-8 landscape:gap-2 transition-colors duration-300"
+              >
+                  {/* Badge Icon */}
                   <div className="relative group">
-                     <div className="absolute inset-0 bg-lab-yellow blur-[50px] opacity-20 group-hover:opacity-40 transition-opacity duration-1000 rounded-full"></div>
-                     <div className="relative w-24 h-24 md:w-36 md:h-36 landscape:w-20 landscape:h-20 rounded-[2rem] bg-gradient-to-tr from-[#1a1a1a] to-[#2a2a2a] flex items-center justify-center border border-white/10 shadow-2xl group-hover:scale-105 transition-transform duration-500">
-                        <Icons.Image className="w-12 h-12 md:w-20 md:h-20 landscape:w-10 landscape:h-10 text-lab-yellow drop-shadow-[0_0_15px_rgba(255,215,0,0.6)]" />
+                     <div className="relative w-20 h-20 md:w-32 md:h-32 landscape:w-16 landscape:h-16 rounded-full bg-lab-yellow flex items-center justify-center border-4 border-lab-text shadow-xl group-hover:scale-105 transition-transform duration-500">
+                        <Icons.Image className="w-10 h-10 md:w-16 md:h-16 landscape:w-8 landscape:h-8 text-white" />
                      </div>
+                     <div className="absolute -bottom-2 bg-lab-text text-white text-[9px] md:text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest border border-white/20 landscape:text-[8px] landscape:px-2 landscape:py-0.5">Est. 2025</div>
                   </div>
                   
-                  <div className="space-y-4 landscape:space-y-2">
-                     <h2 className="text-lg md:text-2xl font-bold uppercase tracking-[0.2em] text-gray-500">
-                        Welcome to
+                  <div className="space-y-2 landscape:space-y-0.5">
+                     <h2 className="text-sm md:text-xl font-black uppercase tracking-[0.2em] text-lab-muted vintage-font landscape:text-xs">
+                        Professional Studio
                      </h2>
-                     {/* Massive Title - Smaller in landscape */}
+                     {/* Vintage Typography */}
                      <div className="flex flex-col items-center leading-none">
-                         <h1 className="text-4xl md:text-7xl lg:text-8xl landscape:text-5xl font-black uppercase tracking-tighter text-white drop-shadow-2xl">
+                         <h1 className="text-6xl md:text-8xl lg:text-9xl font-black text-lab-text drop-shadow-sm vintage-font tracking-tighter landscape:text-5xl landscape:md:text-6xl">
                             REDx
                          </h1>
-                         <h1 className="text-4xl md:text-7xl lg:text-8xl landscape:text-5xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-lab-yellow via-yellow-200 to-yellow-600 drop-shadow-[0_0_30px_rgba(255,215,0,0.3)]">
+                         <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-lab-yellow drop-shadow-[2px_2px_0px_#264653] vintage-font tracking-tight landscape:text-4xl landscape:md:text-5xl">
                             3D LAB
                          </h1>
                      </div>
-                     <p className="text-sm md:text-lg text-gray-400 font-light tracking-wide max-w-lg mx-auto leading-relaxed pt-4 border-t border-white/5 mt-6 landscape:mt-4">
-                        Studio nhiếp ảnh AI chuyên nghiệp. <br className="hidden md:block"/>
-                        Tải ảnh lên menu bên trái để bắt đầu.
+                     <p className="text-xs md:text-base text-lab-text font-bold tracking-wide max-w-md mx-auto leading-relaxed pt-4 border-t-2 border-lab-text/10 mt-4 landscape:mt-2 landscape:pt-1 landscape:text-[10px] landscape:leading-tight">
+                        Nhiếp ảnh AI đậm chất nghệ thuật. <br className="hidden md:block"/>
+                        Chọn ảnh từ ngăn kéo bên trái để bắt đầu.
                      </p>
                   </div>
                   
-                  {/* Feature Pills */}
-                  <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4">
-                      <span className="px-4 py-2 bg-white/5 rounded-full border border-white/10 text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-300 flex items-center gap-2">
-                        <Icons.Check className="w-3 h-3 text-lab-yellow" /> 4K Ultra HD
+                  {/* Retro Feature Pills */}
+                  <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 landscape:gap-1.5 pt-2 landscape:pt-0">
+                      <span className="px-3 py-1.5 landscape:px-2 landscape:py-1 bg-white/50 rounded-full border-2 border-lab-text/10 text-[9px] md:text-xs font-black uppercase tracking-widest text-lab-text flex items-center gap-1.5 shadow-sm">
+                        <Icons.Check className="w-3 h-3 text-lab-yellow" /> 4K Film Grain
                       </span>
-                      <span className="px-4 py-2 bg-white/5 rounded-full border border-white/10 text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-300 flex items-center gap-2">
-                        <Icons.Check className="w-3 h-3 text-lab-yellow" /> Pro Lighting
+                      <span className="px-3 py-1.5 landscape:px-2 landscape:py-1 bg-white/50 rounded-full border-2 border-lab-text/10 text-[9px] md:text-xs font-black uppercase tracking-widest text-lab-text flex items-center gap-1.5 shadow-sm">
+                        <Icons.Check className="w-3 h-3 text-lab-yellow" /> Soft Lighting
                       </span>
-                      <span className="px-4 py-2 bg-white/5 rounded-full border border-white/10 text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-300 flex items-center gap-2">
-                        <Icons.Check className="w-3 h-3 text-lab-yellow" /> Gemini 2026
+                      <span className="px-3 py-1.5 landscape:px-2 landscape:py-1 bg-white/50 rounded-full border-2 border-lab-text/10 text-[9px] md:text-xs font-black uppercase tracking-widest text-lab-text flex items-center gap-1.5 shadow-sm">
+                        <Icons.Check className="w-3 h-3 text-lab-yellow" /> Gemini Power
                       </span>
                   </div>
               </div>
             </div>
           ) : (
-            <div className="relative w-full h-full flex items-center justify-center animate-in fade-in duration-500">
+            <div className="relative w-full h-full flex items-center justify-center animate-in fade-in duration-500 overflow-hidden">
               
               {isComparisonMode && selectedImage.status === 'completed' && selectedImage.processedUrl && !selectedImage.isVideo ? (
                  <ComparisonView 
@@ -482,40 +587,96 @@ const App: React.FC = () => {
                  />
               ) : (
                 <div 
-                  className="relative flex items-center justify-center max-w-full max-h-full transition-all duration-500 ease-out group"
+                  className={`
+                    relative flex items-center justify-center max-w-full max-h-full transition-all ease-out group p-4
+                    ${isDragging ? 'cursor-grabbing' : zoomLevel > 1 ? 'cursor-grab' : 'cursor-default'}
+                  `}
+                  onMouseDown={handleDragStart}
+                  onMouseMove={handleDragMove}
+                  onMouseUp={handleDragEnd}
+                  onMouseLeave={handleDragEnd}
+                  onTouchStart={handleDragStart}
+                  onTouchMove={handleDragMove}
+                  onTouchEnd={handleDragEnd}
                 >
-                  {/* DISPLAY LOGIC: Video vs Image */}
-                  {/* Added landscape max-h optimization */}
-                  {selectedImage.isVideo && selectedImage.processedUrl ? (
-                      <video 
-                        src={selectedImage.processedUrl} 
-                        controls 
-                        autoPlay 
-                        loop
-                        className="max-w-full w-auto h-auto shadow-2xl max-h-[calc(100vh-160px)] md:max-h-[calc(100vh-180px)] landscape:max-h-[calc(100vh-120px)] rounded-lg border border-lab-border"
-                      />
-                  ) : (
-                      <img 
-                          src={selectedImage.processedUrl || selectedImage.originalUrl} 
-                          alt="Workplace" 
-                          className={`
-                              max-w-full w-auto h-auto object-contain shadow-2xl
-                              max-h-[calc(100vh-160px)] md:max-h-[calc(100vh-180px)] landscape:max-h-[calc(100vh-120px)]
-                              ${selectedImage.status === 'processing' ? 'opacity-50 blur-sm scale-95' : 'scale-100'} 
-                              transition-all duration-700
-                          `} 
-                      />
-                  )}
+                  {/* Photo Frame Effect (Only visible when not zoomed in significantly) */}
+                  <div 
+                    className="absolute inset-2 bg-white/10 rounded-2xl border-4 border-lab-dark/20 transform rotate-1 pointer-events-none transition-opacity"
+                    style={{ opacity: zoomLevel > 1.2 ? 0 : 1 }}
+                  ></div>
+
+                  {/* DISPLAY LOGIC with Zoom & Pan */}
+                  <div 
+                     style={{ 
+                        transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
+                        transition: isDragging ? 'none' : 'transform 0.2s ease-out'
+                     }}
+                     className="relative z-10 max-w-full max-h-full flex items-center justify-center"
+                  >
+                      {selectedImage.isVideo && selectedImage.processedUrl ? (
+                          <video 
+                            src={selectedImage.processedUrl} 
+                            controls 
+                            autoPlay 
+                            loop
+                            className="max-w-full w-auto h-auto shadow-[10px_10px_30px_rgba(0,0,0,0.3)] max-h-[80vh] rounded-lg border-4 border-white"
+                          />
+                      ) : (
+                          <img 
+                              src={selectedImage.processedUrl || selectedImage.originalUrl} 
+                              alt="Workplace" 
+                              draggable={false}
+                              className={`
+                                  max-w-full w-auto h-auto object-contain shadow-[10px_10px_30px_rgba(0,0,0,0.3)]
+                                  max-h-[80vh]
+                                  rounded-lg border-4 border-white bg-white
+                                  ${selectedImage.status === 'processing' ? 'opacity-80 sepia blur-[2px]' : ''} 
+                              `} 
+                          />
+                      )}
+                  </div>
                   
-                  {/* Cost Data Hover */}
-                  {selectedImage.status === 'completed' && selectedImage.costData && (
-                      <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md border border-lab-border rounded-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10 hidden md:block">
-                          <div className="text-[10px] font-mono space-y-1 min-w-[150px]">
-                            <div className="border-b border-gray-700 pb-1 mb-1 text-lab-yellow font-bold flex justify-between">
-                                <span>CHI PHÍ</span>
-                                <span className={selectedImage.costData.variancePercent > 0 ? "text-red-400" : "text-green-400"}>{selectedImage.costData.variancePercent > 0 ? '+' : ''}{selectedImage.costData.variancePercent.toFixed(1)}%</span>
+                  {/* ZOOM CONTROLS (Floating) - Adjusted Position for Mobile */}
+                  {!selectedImage.isVideo && selectedImage.status !== 'processing' && (
+                     <div 
+                       data-theme="light"
+                       className="absolute bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-lab-dark/95 p-2 rounded-full border border-lab-border/30 shadow-[0_8px_20px_rgba(0,0,0,0.3)] z-30 backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 safe-area-bottom"
+                     >
+                        <button onClick={handleZoomOut} className="p-2 hover:bg-lab-text/10 rounded-full text-lab-text transition-colors active:scale-90" disabled={zoomLevel <= 1}>
+                           <span className="sr-only">Zoom Out</span>
+                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                        
+                        <div className="min-w-[40px] text-center font-mono flex flex-col items-center justify-center leading-none">
+                            <span className="text-[12px] font-black text-lab-text">{Math.round(zoomLevel * 100)}%</span>
+                        </div>
+
+                        <button onClick={handleZoomIn} className="p-2 hover:bg-lab-text/10 rounded-full text-lab-text transition-colors active:scale-90" disabled={zoomLevel >= 5}>
+                           <span className="sr-only">Zoom In</span>
+                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                        
+                        {zoomLevel > 1 && (
+                            <div className="w-px h-4 bg-lab-text/20 mx-1"></div>
+                        )}
+                        
+                        {zoomLevel > 1 && (
+                            <button onClick={handleResetZoom} className="px-3 py-1.5 bg-lab-yellow text-white text-[10px] font-bold rounded-full uppercase hover:bg-lab-yellowHover shadow-sm active:translate-y-0.5 transition-all">
+                                RESET
+                            </button>
+                        )}
+                     </div>
+                  )}
+
+                  {/* Cost Data Badge (Retro Style) */}
+                  {selectedImage.status === 'completed' && selectedImage.costData && zoomLevel === 1 && (
+                      <div className="absolute top-4 left-4 bg-lab-dark border-2 border-lab-text rounded-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-20 hidden md:block shadow-[4px_4px_0px_rgba(0,0,0,0.2)]">
+                          <div className="text-[10px] font-mono space-y-1 min-w-[150px] text-lab-text">
+                            <div className="border-b border-lab-text/20 pb-1 mb-1 font-bold flex justify-between">
+                                <span>BILLING</span>
+                                <span className={selectedImage.costData.variancePercent > 0 ? "text-red-600" : "text-green-600"}>{selectedImage.costData.variancePercent > 0 ? '+' : ''}{selectedImage.costData.variancePercent.toFixed(1)}%</span>
                             </div>
-                            <div className="flex justify-between text-white font-bold pt-1">
+                            <div className="flex justify-between font-black pt-1 text-xs">
                                 <span>{Math.round(selectedImage.costData.actualCost * PRICING_CONFIG.VND_RATE).toLocaleString('vi-VN')} đ</span>
                             </div>
                           </div>
@@ -523,39 +684,66 @@ const App: React.FC = () => {
                   )}
 
                   {selectedImage.status === 'processing' && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center z-20 px-4">
-                        <div className="w-12 h-12 md:w-16 md:h-16 border-4 border-lab-yellow border-t-transparent rounded-full animate-spin mb-4 md:mb-6 shadow-[0_0_20px_rgba(255,215,0,0.2)]"></div>
-                        <p className="text-lab-yellow font-bold tracking-[0.2em] text-xs md:text-sm animate-pulse text-center bg-black/50 px-3 py-1 rounded">
-                           {selectedImage.isVideo ? 'RENDERING VIDEO (Chờ xíu)...' : 'RENDERING...'}
-                        </p>
-                        {processingQueue.length > 1 && (<div className="mt-3 px-3 py-1 bg-black/50 rounded-full border border-lab-border backdrop-blur-sm"><p className="text-[10px] text-gray-300">Queue: {processingQueue.indexOf(selectedImage.id) + 1} / {processingQueue.length}</p></div>)}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center z-20 px-4 pointer-events-none">
+                        <div className="w-16 h-16 border-4 border-lab-dark border-dashed rounded-full animate-spin-slow mb-4 bg-lab-yellow shadow-lg flex items-center justify-center">
+                            <Icons.Magic className="w-6 h-6 text-white animate-pulse" />
+                        </div>
+                        <div className="bg-lab-dark px-4 py-2 rounded-lg border-2 border-lab-text shadow-[4px_4px_0px_rgba(0,0,0,0.2)]">
+                           <p className="text-lab-text font-black tracking-[0.1em] text-xs md:text-sm text-center uppercase">
+                              {selectedImage.isVideo ? 'Developing Film...' : 'Printing Photo...'}
+                           </p>
+                        </div>
+                        {processingQueue.length > 1 && (<div className="mt-3 px-3 py-1 bg-white/80 rounded-full border border-lab-text"><p className="text-[10px] text-lab-text font-bold">Queue: {processingQueue.indexOf(selectedImage.id) + 1} / {processingQueue.length}</p></div>)}
                       </div>
                   )}
                   {selectedImage.status === 'failed' && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 p-6 text-center backdrop-blur-sm rounded-lg">
-                      <Icons.Alert className="w-10 h-10 md:w-12 md:h-12 text-red-500 mb-4 animate-bounce" />
-                      <p className="text-red-400 font-bold uppercase tracking-widest text-xs md:text-sm">Xử Lý Thất Bại</p>
-                      <p className="text-[10px] md:text-xs text-gray-400 mt-2 max-w-[200px]">{selectedImage.error}</p>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-lab-yellow/90 z-20 p-6 text-center backdrop-blur-sm rounded-lg border-4 border-white pointer-events-none">
+                      <Icons.Alert className="w-12 h-12 text-white mb-2" />
+                      <p className="text-white font-black uppercase tracking-widest text-sm">Error Developing</p>
+                      <p className="text-[10px] md:text-xs text-white mt-1 max-w-[200px] font-mono bg-black/10 p-2 rounded">{selectedImage.error}</p>
                     </div>
                   )}
                 </div>
               )}
             </div>
           )}
+          
+          {/* MOBILE HISTORY TOGGLE BUTTON */}
+          <button 
+            onClick={() => setIsMobileHistoryOpen(!isMobileHistoryOpen)}
+            className={`
+              md:hidden absolute bottom-6 left-6 z-40 w-12 h-12 rounded-full shadow-[4px_4px_0px_#264653] border-2 border-lab-text flex items-center justify-center transition-all duration-300 active:scale-90 active:translate-y-1 active:shadow-none
+              ${isMobileHistoryOpen ? 'bg-lab-text text-white rotate-180' : 'bg-lab-yellow text-white'}
+            `}
+          >
+            {isMobileHistoryOpen ? <Icons.Close className="w-6 h-6" /> : <Icons.History className="w-6 h-6" />}
+          </button>
+
         </div>
 
-        {/* Pass onClearAll to Bottom Bar */}
-        <BottomHistoryBar 
-          history={history} 
-          onSelectImage={setSelectedId} 
-          selectedId={selectedId} 
-          onDelete={handleDelete} 
-          onClearAll={handleClearAll}
-        />
+        {/* 
+          HISTORY BAR CONTAINER 
+          - Mobile: Fixed at bottom, toggles up/down
+          - Desktop: Relative, always visible 
+        */}
+        <div className={`
+          fixed inset-x-0 bottom-0 z-50 transition-transform duration-300 ease-in-out md:relative md:transform-none
+          ${isMobileHistoryOpen ? 'translate-y-0 shadow-[0_-5px_20px_rgba(0,0,0,0.2)]' : 'translate-y-[110%] md:translate-y-0'}
+        `}>
+            <BottomHistoryBar 
+              history={history} 
+              onSelectImage={setSelectedId} 
+              selectedId={selectedId} 
+              onDelete={handleDelete} 
+              onClearAll={handleClearAll}
+              onClose={() => setIsMobileHistoryOpen(false)}
+            />
+        </div>
+
       </main>
 
       {/* Right Sidebar Drawer - Drawer on Tablet/Mobile, Static on Desktop (LG+) */}
-      <div className={`fixed inset-y-0 right-0 z-50 w-[85%] sm:w-80 md:w-80 lg:w-80 transform transition-transform duration-300 ease-out lg:relative lg:translate-x-0 shadow-2xl ${isRightOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`fixed inset-y-0 right-0 z-50 w-[85%] sm:w-80 md:w-80 lg:w-80 transform transition-transform duration-300 ease-out lg:relative lg:translate-x-0 shadow-[-10px_0_30px_rgba(0,0,0,0.1)] ${isRightOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <RightSidebar settings={settings} onUpdateSettings={setSettings} onGenerate={handleGenerateClick} isProcessing={isProcessing} canGenerate={!!selectedImage && selectedImage.status !== 'processing'} onClose={() => setIsRightOpen(false)} />
       </div>
 

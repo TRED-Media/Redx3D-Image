@@ -15,6 +15,8 @@ interface LeftSidebarProps {
   settings: ImageSettings;
   onUpdateSettings: (newSettings: ImageSettings) => void;
   onResetStats?: () => void; // New Reset Prop
+  isDarkMode?: boolean;
+  onToggleTheme?: () => void;
 }
 
 const LeftSidebar: React.FC<LeftSidebarProps> = ({ 
@@ -23,7 +25,9 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
   projectStats,
   settings,
   onUpdateSettings,
-  onResetStats
+  onResetStats,
+  isDarkMode,
+  onToggleTheme
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refImageInputRef = useRef<HTMLInputElement>(null); // New Ref for Reference Image
@@ -36,8 +40,6 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Handle Reference Image Upload (Convert to Base64 and store in settings)
-  // FIXED: Batched update to prevent race conditions
   const handleRefImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -54,7 +56,6 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
     if (refImageInputRef.current) refImageInputRef.current.value = '';
   };
 
-  // FIXED: Batched update
   const removeRefImage = () => {
     onUpdateSettings({
         ...settings,
@@ -77,115 +78,113 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
   };
 
   const totalCostVND = Math.round(projectStats.totalCost * PRICING_CONFIG.VND_RATE);
-  
-  // Real-time calculation using centralized logic
   const currentEst = PRICING_CONFIG.calculateEstimatedCost(settings);
 
   return (
-    <div className="w-full h-full bg-lab-dark border-r border-lab-border flex flex-col z-20 shadow-xl relative lg:w-80 font-sans">
-      {/* Mobile/Tablet Close Button - Hidden on LG+ */}
+    <div className="w-full h-full bg-lab-dark border-r-2 border-lab-border flex flex-col z-20 shadow-xl relative lg:w-80 font-sans text-lab-text transition-colors duration-300">
+      {/* Mobile/Tablet Close Button */}
       <button 
         onClick={onClose}
-        className="lg:hidden absolute top-2 right-2 text-gray-400 hover:text-white z-50 p-3 active:bg-white/10 rounded-full transition-colors"
+        className="lg:hidden absolute top-2 right-2 text-lab-muted hover:text-lab-yellow z-50 p-3 active:bg-lab-text/10 rounded-full transition-colors"
       >
         <Icons.Close className="w-5 h-5" />
       </button>
 
-      {/* Header - Logo Area - ENHANCED SIZE AND STYLE */}
-      <div className="h-24 landscape:h-16 md:h-28 shrink-0 border-b border-lab-border flex flex-row gap-4 items-center justify-center px-4 bg-gradient-to-b from-lab-panel to-lab-dark shadow-sm">
-        <div className="relative w-12 h-12 landscape:w-10 landscape:h-10 md:w-14 md:h-14 flex-shrink-0 group cursor-default">
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-[0_0_15px_rgba(255,215,0,0.4)] transition-transform group-hover:scale-105 duration-500">
-            <rect width="100" height="100" rx="20" fill="#FFD700" />
-            <path 
-              fill="#000000"
-              d="M30 25 L70 25 L80 35 L80 45 L65 45 L65 55 L80 55 L80 75 L50 75 L40 65 L40 55 L30 55 Z"
-            />
-          </svg>
+      {/* Header - Logo Removed, Text Only */}
+      <div className="h-20 landscape:h-16 md:h-24 shrink-0 border-b-2 border-lab-border flex flex-col items-center justify-center px-4 bg-lab-dark shadow-sm relative transition-colors duration-300">
+        <div className="flex flex-col items-center justify-center">
+          <span className="text-lab-text font-black text-3xl landscape:text-2xl md:text-3xl leading-none tracking-widest vintage-font drop-shadow-sm">REDx</span>
+          <span className="text-lab-muted font-extrabold text-[11px] md:text-[12px] leading-none tracking-[0.35em] mt-1 pl-1">3D LABORATORY</span>
         </div>
         
-        <div className="flex flex-col items-start justify-center">
-          <span className="text-lab-yellow font-black text-2xl landscape:text-xl md:text-3xl leading-none tracking-widest drop-shadow-md">REDx</span>
-          <span className="text-white font-bold text-[10px] md:text-xs leading-none tracking-[0.25em] opacity-80 mt-1 pl-0.5">DESIGN LAB</span>
-        </div>
+        {/* Theme Toggle Button - Absolute Top Left */}
+        {onToggleTheme && (
+           <button 
+             onClick={onToggleTheme}
+             className="absolute top-4 left-4 p-2 rounded-full text-lab-muted hover:text-lab-yellow active:scale-90 transition-all hover:bg-lab-panel"
+             title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+           >
+             {isDarkMode ? <Icons.Sun className="w-4 h-4" /> : <Icons.Moon className="w-4 h-4" />}
+           </button>
+        )}
       </div>
 
-      {/* Scrollable Content Area - Safe Area for Mobile */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-lab-border pb-10">
+      {/* Scrollable Content Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-lab-yellow pb-10 bg-lab-dark transition-colors duration-300">
         
-        {/* Upload Button */}
+        {/* Upload Button - Tactile Card Style */}
         <div 
           onClick={() => fileInputRef.current?.click()}
-          className="w-full h-28 landscape:h-20 border-2 border-dashed border-lab-border hover:border-lab-yellow hover:bg-lab-panel/50 transition-all duration-300 cursor-pointer rounded-xl flex flex-col items-center justify-center gap-3 group relative overflow-hidden active:scale-95 shrink-0 shadow-lg"
+          className="w-full h-auto min-h-[7rem] landscape:min-h-[6rem] py-6 landscape:py-4 border-2 border-dashed border-lab-muted hover:border-lab-yellow hover:bg-lab-input transition-all duration-300 cursor-pointer rounded-2xl flex flex-col items-center justify-center gap-3 group relative overflow-hidden active:scale-95 shrink-0 shadow-sm hover:shadow-md"
         >
-          <div className="absolute inset-0 bg-gradient-to-tr from-lab-yellow/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="p-3 bg-lab-panel rounded-full group-hover:bg-lab-yellow group-hover:text-black transition-colors duration-300">
-             <Icons.Upload className="w-6 h-6 text-lab-muted group-hover:text-black" />
+          <div className="p-3 bg-lab-panel rounded-full group-hover:bg-lab-yellow group-hover:text-white transition-colors duration-300 shadow-sm border-2 border-lab-border/10">
+             <Icons.Upload className="w-6 h-6 text-lab-text group-hover:text-white" />
           </div>
-          <div className="text-center relative z-10">
-            <p className="text-xs font-bold text-gray-300 group-hover:text-white transition-colors uppercase tracking-wide">Tải Ảnh Sản Phẩm</p>
-            <p className="text-[9px] text-gray-500 mt-0.5">(Input 1 - Master Asset)</p>
+          <div className="text-center relative z-10 px-2">
+            <p className="text-sm font-black text-lab-text group-hover:text-lab-yellowHover transition-colors uppercase tracking-wide">Tải Ảnh Sản Phẩm</p>
+            <p className="text-[10px] text-lab-muted mt-1 font-bold opacity-80">(Input 1 - Master Asset)</p>
           </div>
         </div>
 
         {/* 1. Model Selector */}
-        <div className="space-y-2 animate-in slide-in-from-left-1 duration-300">
+        <div className="space-y-2">
            <div className="flex items-center gap-2 text-lab-yellow">
-              <Icons.Box className="w-3 h-3" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">AI Model (Version)</span>
+              <Icons.Box className="w-4 h-4" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-lab-text">AI Model (Version)</span>
            </div>
            <div className="flex flex-col gap-2">
               {AI_MODELS.map(model => (
                 <button
                   key={model.value}
                   onClick={() => updateModel(model.value)}
-                  className={`flex flex-col items-start p-3 md:p-3 rounded border transition-all active:scale-[0.98] shadow-sm ${settings.model === model.value ? 'bg-lab-yellow/10 border-lab-yellow ring-1 ring-lab-yellow/20' : 'bg-lab-panel border-lab-border hover:border-gray-500'}`}
+                  className={`flex flex-col items-start p-3 md:p-3 rounded-xl border-2 transition-all active:scale-[0.98] ${settings.model === model.value ? 'bg-lab-panel border-lab-yellow shadow-[2px_2px_0px_var(--lab-yellow)]' : 'bg-lab-input border-lab-border hover:border-lab-text/50'}`}
                 >
                   <div className="flex items-center justify-between w-full">
-                     <span className={`text-xs font-bold ${settings.model === model.value ? 'text-lab-yellow' : 'text-gray-300'}`}>
+                     <span className={`text-xs font-black ${settings.model === model.value ? 'text-lab-yellowHover' : 'text-lab-text'}`}>
                        {model.label}
                      </span>
-                     {settings.model === model.value && <div className="w-2 h-2 rounded-full bg-lab-yellow shadow-[0_0_8px_rgba(255,215,0,0.8)]" />}
+                     {settings.model === model.value && <div className="w-2.5 h-2.5 rounded-full bg-lab-yellow" />}
                   </div>
-                  <span className="text-[10px] text-gray-500 mt-1 text-left leading-tight">{model.desc}</span>
+                  <span className="text-[10px] text-lab-muted mt-1 text-left leading-tight font-bold opacity-90">{model.desc}</span>
                 </button>
               ))}
            </div>
         </div>
 
-        {/* --- NEW SECTION: DUAL IMAGE INPUT (REFERENCE) --- */}
-        <div className="space-y-2 animate-in slide-in-from-left-2 duration-300 bg-lab-panel/50 p-3 rounded-lg border border-lab-border/50">
-            <div className="flex items-center justify-between text-lab-yellow">
+        {/* --- DUAL IMAGE INPUT (REFERENCE) --- */}
+        <div className="space-y-2 bg-lab-panel p-3 rounded-xl border-2 border-lab-border">
+            <div className="flex items-center justify-between text-lab-text">
                 <div className="flex items-center gap-2">
-                    <Icons.Layers className="w-3 h-3" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Hợp nhất 2 ảnh (Input 2)</span>
+                    <Icons.Layers className="w-4 h-4" />
+                    <span className="text-[11px] font-black uppercase tracking-wider">Hợp nhất 2 ảnh (Input 2)</span>
                 </div>
                 {settings.referenceImageUrl && (
-                    <button onClick={removeRefImage} className="text-[9px] text-red-400 hover:text-white underline">Xóa</button>
+                    <button onClick={removeRefImage} className="text-[10px] text-red-600 hover:underline font-black">XÓA</button>
                 )}
             </div>
 
             {!settings.referenceImageUrl ? (
                 <div 
                     onClick={() => refImageInputRef.current?.click()}
-                    className="w-full h-16 border border-dashed border-gray-600 hover:border-lab-yellow hover:bg-lab-panel transition-all cursor-pointer rounded flex items-center justify-center gap-2"
+                    className="w-full h-16 border-2 border-dashed border-lab-muted/40 hover:border-lab-yellow hover:bg-lab-input transition-all cursor-pointer rounded-lg flex items-center justify-center gap-2"
                 >
-                    <Icons.Image className="w-4 h-4 text-gray-500" />
-                    <span className="text-[10px] text-gray-400">Chọn ảnh Người / Mẫu (Tùy chọn)</span>
+                    <Icons.Image className="w-4 h-4 text-lab-muted" />
+                    <span className="text-[11px] text-lab-muted font-bold">Chọn ảnh Người / Mẫu (Tùy chọn)</span>
                 </div>
             ) : (
                 <>
-                <div className="relative w-full h-24 rounded overflow-hidden border border-lab-yellow group">
-                     <img src={settings.referenceImageUrl} alt="Reference" className="w-full h-full object-cover opacity-80" />
-                     <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-1 text-center">
-                        <span className="text-[9px] text-white font-bold">Input 2: Người dùng</span>
+                <div className="relative w-full h-24 rounded-lg overflow-hidden border-2 border-lab-yellow group shadow-sm">
+                     <img src={settings.referenceImageUrl} alt="Reference" className="w-full h-full object-cover" />
+                     <div className="absolute bottom-0 left-0 right-0 bg-lab-text/80 p-1 text-center backdrop-blur-sm">
+                        <span className="text-[10px] text-white font-bold">Input 2: Người dùng</span>
                      </div>
                 </div>
 
-                {/* --- NEW: KEEP BACKGROUND TOGGLE --- */}
-                <div className="flex items-center justify-between pt-2 border-t border-white/10 mt-2">
+                {/* KEEP BACKGROUND TOGGLE */}
+                <div className="flex items-center justify-between pt-2 border-t border-lab-text/10 mt-2">
                      <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-gray-200">Giữ nguyên Bối Cảnh</span>
-                        <span className="text-[8px] text-gray-500">{settings.isKeepRefBackground ? 'Đóng băng menu Bối cảnh/Sáng' : 'Thay nền mới & Relight'}</span>
+                        <span className="text-[11px] font-bold text-lab-text">Giữ nguyên Bối Cảnh</span>
+                        <span className="text-[9px] text-lab-muted font-bold opacity-80">{settings.isKeepRefBackground ? 'Đóng băng menu Bối cảnh/Sáng' : 'Thay nền mới & Relight'}</span>
                      </div>
                      <label className="relative inline-flex items-center cursor-pointer">
                         <input 
@@ -194,39 +193,37 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                             checked={settings.isKeepRefBackground} 
                             onChange={(e) => updateField('isKeepRefBackground', e.target.checked)} 
                         />
-                        <div className="w-7 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-lab-yellow"></div>
+                        <div className="w-7 h-4 bg-lab-text/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-lab-yellow"></div>
                     </label>
                 </div>
                 </>
             )}
             
-            {/* Interaction Prompt - Only visible if Ref Image is present */}
             {settings.referenceImageUrl && (
                 <div className="space-y-1 pt-2 animate-in slide-in-from-top-2">
-                    <label className="text-[10px] text-gray-400 uppercase font-bold">Mô tả tương tác (Prompt):</label>
+                    <label className="text-[10px] text-lab-muted uppercase font-black">Mô tả tương tác (Prompt):</label>
                     <textarea 
-                        className="w-full bg-black border border-lab-yellow/50 rounded p-2 text-xs text-white focus:border-lab-yellow outline-none h-16 resize-none placeholder-gray-600"
-                        placeholder="Vd: Người đang cầm sản phẩm trên tay trái, ngón tay cái đặt nhẹ lên nắp..."
+                        className="w-full bg-lab-input border-2 border-lab-border rounded-lg p-2 text-xs text-lab-text font-bold focus:border-lab-yellow outline-none h-16 resize-none placeholder-gray-500"
+                        placeholder="Vd: Người đang cầm sản phẩm..."
                         value={settings.dualImagePrompt || ''}
                         onChange={(e) => updateField('dualImagePrompt', e.target.value)}
                     />
                 </div>
             )}
         </div>
-        {/* ------------------------------------------------- */}
 
         {/* 2. Variant Menu */}
-        <div className="space-y-2 animate-in slide-in-from-left-2 duration-300">
+        <div className="space-y-2">
            <div className="flex items-center gap-2 text-lab-yellow">
-              <Icons.Layers className="w-3 h-3" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Số biến thể (Mỗi góc)</span>
+              <Icons.Layers className="w-4 h-4" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-lab-text">Số biến thể (Mỗi góc)</span>
            </div>
-           <div className="flex bg-lab-panel rounded p-1 border border-lab-border w-full">
+           <div className="flex bg-lab-input rounded-xl p-1 border-2 border-lab-border w-full shadow-inner">
               {OUTPUT_COUNTS.map(count => (
                 <button
                   key={count}
                   onClick={() => updateOutputCount(count)}
-                  className={`flex-1 text-xs py-2 md:py-1.5 rounded transition-all font-mono active:scale-95 ${settings.outputCount === count ? 'bg-lab-yellow text-black font-bold shadow-md' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                  className={`flex-1 text-xs py-2 md:py-1.5 rounded-lg transition-all font-black active:scale-95 ${settings.outputCount === count ? 'bg-lab-yellow text-white shadow-sm' : 'text-lab-muted hover:text-lab-text hover:bg-lab-panel'}`}
                 >
                   {count}x
                 </button>
@@ -235,13 +232,13 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
         </div>
 
         {/* 3. Product Details */}
-        <div className="space-y-2 animate-in slide-in-from-left-3 duration-300">
+        <div className="space-y-2">
           <div className="flex items-center gap-2 text-lab-yellow">
-             <Icons.Check className="w-3 h-3" />
-             <span className="text-[10px] font-bold uppercase tracking-wider">Chi Tiết Sản Phẩm (Input 1)</span>
+             <Icons.Check className="w-4 h-4" />
+             <span className="text-[11px] font-black uppercase tracking-wider text-lab-text">Chi Tiết Sản Phẩm (Input 1)</span>
           </div>
           <textarea 
-            className="w-full bg-lab-panel border border-lab-border rounded p-3 text-xs text-white focus:border-lab-yellow outline-none h-20 resize-none placeholder-gray-600 leading-relaxed font-sans"
+            className="w-full bg-lab-input border-2 border-lab-border rounded-xl p-3 text-xs text-lab-text font-bold focus:border-lab-yellow outline-none h-20 resize-none placeholder-gray-500 leading-relaxed font-sans shadow-inner"
             placeholder="Vd: Chai nước hoa 50ml vỏ thủy tinh, nắp gỗ..."
             value={settings.productDescription || ''}
             onChange={(e) => updateField('productDescription', e.target.value)}
@@ -250,10 +247,10 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
         {/* 4. Background Removal */}
         {settings.model !== 'veo-3.1-fast-generate-preview' && (
-          <div className={`bg-lab-panel p-3 rounded border border-lab-border flex items-center justify-between animate-in slide-in-from-left-4 duration-300 active:bg-lab-panel/80 transition-opacity ${settings.referenceImageUrl && settings.isKeepRefBackground ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-            <div className="flex items-center gap-2 text-white">
-                <Icons.EyeOff className="w-3 h-3 text-lab-yellow" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Chỉ Tách Nền Trắng</span>
+          <div className={`bg-lab-panel p-3 rounded-xl border-2 border-lab-border flex items-center justify-between ${settings.referenceImageUrl && settings.isKeepRefBackground ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+            <div className="flex items-center gap-2 text-lab-text">
+                <Icons.EyeOff className="w-4 h-4 text-lab-yellow" />
+                <span className="text-[11px] font-black uppercase tracking-wider">Chỉ Tách Nền Trắng</span>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input 
@@ -261,35 +258,34 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   className="sr-only peer" 
                   checked={settings.isRemoveBackground} 
                   onChange={(e) => updateField('isRemoveBackground', e.target.checked)}
-                  // Disable if Keep Ref Background is ON, as they conflict logic-wise
                   disabled={!!settings.referenceImageUrl && settings.isKeepRefBackground} 
               />
-              <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-lab-yellow"></div>
+              <div className="w-9 h-5 bg-lab-text/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-lab-yellow"></div>
             </label>
           </div>
         )}
 
-        <div className="border-t border-lab-border" />
+        <div className="border-t-2 border-dashed border-lab-border/20" />
         
         {/* MERGED COST SECTION: Live Est + Historical Stats */}
-        <div className="w-full bg-lab-yellow/5 border border-lab-yellow/20 rounded-lg overflow-hidden animate-in fade-in">
+        <div className="w-full bg-lab-light/10 border-2 border-lab-light/30 rounded-xl overflow-hidden shadow-sm">
            {/* Top: Live Estimation */}
-           <div className="p-3 space-y-2 bg-lab-yellow/10">
-              <div className="flex items-center gap-2 text-lab-yellow pb-1 mb-1 border-b border-lab-yellow/20">
-                 <Icons.Sun className="w-3 h-3" />
-                 <span className="font-bold tracking-wider uppercase text-[10px]">CHI PHÍ DỰ KIẾN (LIVE)</span>
+           <div className="p-3 space-y-2 bg-lab-light/20">
+              <div className="flex items-center gap-2 text-lab-text pb-1 mb-1 border-b border-lab-text/10">
+                 <Icons.Sun className="w-4 h-4 text-lab-yellow" />
+                 <span className="font-black tracking-wider uppercase text-[11px]">CHI PHÍ DỰ KIẾN (LIVE)</span>
               </div>
               
-              <div className="flex justify-between items-center text-[10px] text-gray-400 font-mono">
+              <div className="flex justify-between items-center text-[11px] text-lab-muted font-bold">
                  <span>Số lượng:</span>
-                 <span className="text-white">
+                 <span className="text-lab-text font-black">
                    {currentEst.count} {currentEst.isVideo ? 'video' : 'ảnh'}
                    {currentEst.isVideo && ` (${settings.videoDuration}s)`}
                  </span>
               </div>
-              <div className="flex justify-between items-center font-mono">
-                 <span className="text-[10px] text-gray-400">Đơn giá:</span>
-                 <span className="font-bold text-lab-yellow text-xs">
+              <div className="flex justify-between items-center font-bold">
+                 <span className="text-[11px] text-lab-muted">Đơn giá:</span>
+                 <span className="font-black text-lab-yellowHover text-xs">
                    {currentEst.costVND.toLocaleString('vi-VN')} đ
                  </span>
               </div>
@@ -297,48 +293,48 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
            
            {/* Bottom: Total Spent (Merged) */}
            <div 
-             className="p-3 bg-black/40 border-t border-lab-yellow/10 space-y-1 cursor-pointer hover:bg-black/60 transition-colors"
+             className="p-3 bg-lab-input border-t border-lab-border/20 space-y-1 cursor-pointer hover:bg-lab-panel transition-colors"
              onClick={() => setShowBreakdown(!showBreakdown)}
            >
-              <div className="flex items-center justify-between text-gray-500 mb-1">
+              <div className="flex items-center justify-between text-lab-muted mb-1">
                  <div className="flex items-center gap-2">
-                    <Icons.History className="w-3 h-3" />
-                    <span className="font-bold tracking-wider uppercase text-[9px]">TỔNG CHI TÍCH LŨY</span>
+                    <Icons.History className="w-4 h-4" />
+                    <span className="font-black tracking-wider uppercase text-[10px]">TỔNG CHI TÍCH LŨY</span>
                  </div>
                  <Icons.Settings className="w-3 h-3 opacity-50" />
               </div>
-              <div className="flex justify-between items-center text-[10px] text-gray-500 font-mono">
+              <div className="flex justify-between items-center text-[11px] text-lab-muted font-bold">
                  <span>Đã tạo:</span>
-                 <span className="text-gray-400">{projectStats.totalImagesGenerated} items</span>
+                 <span className="text-lab-text font-black">{projectStats.totalImagesGenerated} items</span>
               </div>
-              <div className="flex justify-between items-center font-mono">
-                 <span className="text-[10px] text-gray-500">Tổng phí:</span>
-                 <span className="font-bold text-gray-300 text-xs">
+              <div className="flex justify-between items-center font-bold">
+                 <span className="text-[11px] text-lab-muted">Tổng phí:</span>
+                 <span className="font-black text-lab-text text-xs">
                    {totalCostVND.toLocaleString('vi-VN')} đ
                  </span>
               </div>
 
               {/* DETAIL BREAKDOWN */}
               {showBreakdown && projectStats.modelCounts && (
-                <div className="mt-3 pt-2 border-t border-gray-800 space-y-1 animate-in slide-in-from-top-1">
-                   <div className="flex justify-between text-[9px] text-gray-500">
+                <div className="mt-3 pt-2 border-t border-lab-border/10 space-y-1 animate-in slide-in-from-top-1">
+                   <div className="flex justify-between text-[10px] text-lab-muted font-bold">
                      <span>Veo (Video):</span>
-                     <span className="text-gray-300">{projectStats.modelCounts['veo-3.1-fast-generate-preview'] || 0}</span>
+                     <span className="text-lab-text font-black">{projectStats.modelCounts['veo-3.1-fast-generate-preview'] || 0}</span>
                    </div>
-                   <div className="flex justify-between text-[9px] text-gray-500">
+                   <div className="flex justify-between text-[10px] text-lab-muted font-bold">
                      <span>Banana 2 (Pro):</span>
-                     <span className="text-gray-300">{projectStats.modelCounts['gemini-3-pro-image-preview'] || 0}</span>
+                     <span className="text-lab-text font-black">{projectStats.modelCounts['gemini-3-pro-image-preview'] || 0}</span>
                    </div>
-                   <div className="flex justify-between text-[9px] text-gray-500">
+                   <div className="flex justify-between text-[10px] text-lab-muted font-bold">
                      <span>Nano (Flash):</span>
-                     <span className="text-gray-300">{projectStats.modelCounts['gemini-2.5-flash-image'] || 0}</span>
+                     <span className="text-lab-text font-black">{projectStats.modelCounts['gemini-2.5-flash-image'] || 0}</span>
                    </div>
                    
                    {/* RESET BUTTON */}
                    {onResetStats && (
                      <button 
                        onClick={(e) => { e.stopPropagation(); onResetStats(); }}
-                       className="w-full mt-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded text-[9px] uppercase font-bold transition-colors"
+                       className="w-full mt-2 py-1 bg-red-100 hover:bg-red-200 text-red-600 border border-red-200 rounded text-[10px] uppercase font-black transition-colors"
                      >
                        Reset Thống Kê
                      </button>
@@ -350,8 +346,9 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
       </div>
       
-      <div className="p-3 border-t border-lab-border text-[9px] text-center text-gray-600 bg-lab-dark shrink-0 safe-area-bottom font-mono">
-        v3.3.0 • {settings.model === 'gemini-3-pro-image-preview' ? 'Banana 2 (Pro)' : 'Nano Banana'}
+      <div className="p-3 border-t-2 border-lab-border bg-lab-panel text-center text-lab-muted shrink-0 safe-area-bottom font-mono flex flex-col items-center justify-center gap-1 transition-colors duration-300">
+        <div className="text-[10px] font-bold">v3.3.0 • {settings.model === 'gemini-3-pro-image-preview' ? 'Banana 2 (Pro)' : 'Nano Banana'}</div>
+        <div className="text-[9px] font-black uppercase opacity-70">Phần mềm thuộc bản quyền của T-Red Media (tred.vn)</div>
       </div>
 
       <input 

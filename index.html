@@ -3,7 +3,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Xử lí ảnh sản phẩm cùng REDX 3D Lab</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -12,45 +12,116 @@
           extend: {
             colors: {
               lab: {
-                black: '#0a0a0a',
-                dark: '#121212',
-                panel: '#1a1a1a',
-                border: '#333333',
-                yellow: '#FFD700',
-                yellowHover: '#E6C200',
-                text: '#EDEDED',
-                muted: '#888888'
+                black: 'var(--lab-black)',
+                dark: 'var(--lab-dark)',
+                panel: 'var(--lab-panel)',
+                border: 'var(--lab-border)',
+                yellow: 'var(--lab-yellow)',
+                yellowHover: 'var(--lab-yellowHover)',
+                text: 'var(--lab-text)',
+                muted: 'var(--lab-muted)',
+                light: 'var(--lab-light)',
+                input: 'var(--lab-input)'
               }
             },
             fontFamily: {
-              sans: ['Roboto', 'Arial', 'sans-serif'], // Updated for better VN support
+              sans: ['Quicksand', 'Roboto', 'sans-serif'],
+              serif: ['Quicksand', 'sans-serif'],
               mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+            },
+            animation: {
+              'spin-slow': 'spin 3s linear infinite',
             }
           }
         }
       }
     </script>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-      body {
-        background-color: #0a0a0a;
-        color: #EDEDED;
-        font-family: 'Roboto', Arial, sans-serif; /* Applied globally */
+      /* 
+         THEME DEFINITIONS 
+         :root & [data-theme='light'] -> Vintage Style
+         [data-theme='dark'] -> Modern Darkroom Style
+      */
+
+      :root, [data-theme='light'] {
+        /* VINTAGE THEME (Updated for better contrast) */
+        --lab-black: #4A9EA6;      /* Canvas: Vintage Teal */
+        --lab-dark: #FFF9EE;       /* Sidebar: Soft Cream/Paper (Brightened for text clarity) */
+        --lab-panel: #FFE2AF;      /* Panel: Deep Manila/Cardboard (The classic retro color) */
+        --lab-border: #264653;     /* Border: Deep Teal/Ink */
+        
+        --lab-yellow: #E85D4B;     /* Primary: Retro Orange/Red */
+        --lab-yellowHover: #C03F2E;
+        
+        --lab-text: #0F2D3A;       /* Text: Deep Navy Ink */
+        --lab-muted: #537585;      /* Muted: Faded Ink */
+        --lab-light: #8ECAC7;      /* Accents: Light Teal */
+        
+        --lab-input: #FFFFFF;      /* Input: Pure White */
       }
-      /* Custom scrollbar for webkit */
+
+      [data-theme='dark'] {
+        /* DARK MODE (Warm Stone/Darkroom) - Easier on eyes than pure black */
+        --lab-black: #0c0a09;      /* Canvas: Stone 950 (Warm Black) */
+        --lab-dark: #1c1917;       /* Sidebar: Stone 900 */
+        --lab-panel: #292524;      /* Panel: Stone 800 */
+        --lab-border: #44403c;     /* Border: Stone 700 */
+        
+        --lab-yellow: #FCA5A5;     /* Primary: Soft Pastel Red (Pop on dark) */
+        --lab-yellowHover: #F87171;
+        
+        --lab-text: #E7E5E4;       /* Text: Stone 200 (Warm White) */
+        --lab-muted: #A8A29E;      /* Muted: Stone 400 */
+        --lab-light: #57534E;      /* Accents: Stone 600 */
+        
+        --lab-input: #0f0e0d;      /* Input: Very Dark Inset */
+      }
+
+      body {
+        background-color: var(--lab-black);
+        color: var(--lab-text);
+        font-family: 'Quicksand', sans-serif;
+        font-weight: 600;
+        overscroll-behavior: none;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      
+      h1, h2, h3, .vintage-font {
+        font-family: 'Quicksand', sans-serif;
+        font-weight: 800;
+      }
+
       ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: #1a1a1a; 
+        background: var(--lab-dark); 
       }
       ::-webkit-scrollbar-thumb {
-        background: #333; 
+        background: var(--lab-border); 
         border-radius: 3px;
+        opacity: 0.5;
       }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #FFD700; 
+      
+      .safe-area-bottom {
+        padding-bottom: env(safe-area-inset-bottom, 20px);
+      }
+      
+      /* Force inputs to respect theme in autofill */
+      input:-webkit-autofill,
+      input:-webkit-autofill:hover, 
+      input:-webkit-autofill:focus, 
+      textarea:-webkit-autofill,
+      textarea:-webkit-autofill:hover,
+      textarea:-webkit-autofill:focus,
+      select:-webkit-autofill,
+      select:-webkit-autofill:hover,
+      select:-webkit-autofill:focus {
+        -webkit-text-fill-color: var(--lab-text);
+        -webkit-box-shadow: 0 0 0px 1000px var(--lab-input) inset;
+        transition: background-color 5000s ease-in-out 0s;
       }
     </style>
   <script type="importmap">
