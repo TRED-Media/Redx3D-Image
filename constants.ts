@@ -1,4 +1,5 @@
 
+
 import { SceneType, TimeOfDay, Mood, Lighting, FocalLength, AspectRatio, HumanInteraction, HumanStyle, ViewAngle, ShotSize, AIModelId, PhotographyDevice, FilterType, ImageSettings } from './types';
 
 // --- PRICING CONSTANTS ---
@@ -14,7 +15,9 @@ const SAFETY_BUFFER = 1.2;
 
 const getPrice = (model: AIModelId) => {
   if (model === 'gemini-3-pro-image-preview') {
+    // 2026 PRO PRICING MODEL
     // Base: 2.50 / 10.00 -> Buffered: 3.00 / 12.00
+    // NOTE: 4K generation will apply a 2x multiplier on top of this in calculateEstimatedCost
     return { 
       INPUT: 2.50 * SAFETY_BUFFER, 
       OUTPUT: 10.00 * SAFETY_BUFFER 
@@ -26,7 +29,7 @@ const getPrice = (model: AIModelId) => {
       OUTPUT: 20.00 * SAFETY_BUFFER 
     }; 
   } else {
-    // Base: 0.10 / 0.40 -> Buffered: 0.12 / 0.48
+    // Legacy/Fallback pricing
     return { 
       INPUT: 0.10 * SAFETY_BUFFER, 
       OUTPUT: 0.40 * SAFETY_BUFFER 
@@ -56,7 +59,15 @@ const calculateEstimatedCost = (settings: ImageSettings) => {
     count = viewAngles * focalLengths * countPerAngle * deviceCount;
     
     const singleInput = EST_INPUT_IMAGE_TOKENS + EST_INPUT_TEXT_TOKENS;
-    const singleOutput = EST_OUTPUT_TOKENS_PER_IMAGE;
+    
+    // LOGIC UPDATE: High Res (4K) for Pro Model doubles the output "cost" (simulated via token count)
+    // This reflects the 2x pricing for premium quality in 2026
+    let outputMultiplier = 1;
+    if (settings.model === 'gemini-3-pro-image-preview' && settings.isHighRes) {
+        outputMultiplier = 2.0; 
+    }
+    
+    const singleOutput = EST_OUTPUT_TOKENS_PER_IMAGE * outputMultiplier;
 
     totalInputTokens = singleInput * count;
     totalOutputTokens = singleOutput * count;
@@ -83,7 +94,6 @@ export const PRICING_CONFIG = {
 };
 
 export const AI_MODELS: { value: AIModelId; label: string; desc: string }[] = [
-  { value: 'gemini-2.5-flash-image', label: 'Nano Banana', desc: 'Gemini 2.5 Flash. Tốc độ cao, rẻ, tốt cho test.' },
   { value: 'gemini-3-pro-image-preview', label: 'Banana 2 (Pro)', desc: 'Gemini 3 Pro. Chi tiết cực cao, hỗ trợ 4K, Smart Prompt.' },
   { value: 'veo-3.1-fast-generate-preview', label: 'Veo Video (FullHD)', desc: 'Tạo video ngắn 5s chất lượng 1080p. Thích hợp cho Social.' },
 ];
@@ -210,10 +220,10 @@ export const VIEW_ANGLES: { value: ViewAngle; label: string; desc: string }[] = 
 
 // REFACTORED SHOT SIZES - Merged Close-up & Macro
 export const SHOT_SIZES: { value: ShotSize; label: string; desc: string }[] = [
-  { value: 'wide', label: 'Góc Rộng (Wide)', desc: 'Sản phẩm nhỏ. Nhấn mạnh không gian.' },
-  { value: 'full', label: 'Toàn Cảnh (Full)', desc: 'Sản phẩm vừa khung hình.' },
-  { value: 'medium', label: 'Trung Cận (Medium)', desc: 'Sản phẩm chiếm 60% khung.' },
-  { value: 'close_up', label: 'Đặc Tả / Cận Cảnh', desc: 'Sản phẩm RẤT TO. Soi rõ chất liệu.' },
+  { value: 'wide', label: 'Góc Rộng (Wide)', desc: 'SP Nhỏ (20%). Môi trường bao la.' },
+  { value: 'full', label: 'Toàn Cảnh (Full)', desc: 'SP vừa khung. Thấy trọn vẹn.' },
+  { value: 'medium', label: 'Trung Cận (Medium)', desc: 'SP Lớn (80%). Tập trung hình khối.' },
+  { value: 'close_up', label: 'Đặc Tả (Macro)', desc: 'Tràn khung (100%+). Soi chi tiết/Texture.' },
 ];
 
 export const VIDEO_SHOT_SIZES: { value: ShotSize; label: string; desc: string }[] = [
@@ -224,13 +234,15 @@ export const VIDEO_SHOT_SIZES: { value: ShotSize; label: string; desc: string }[
 
 export const OUTPUT_COUNTS: number[] = [1, 2, 3, 4];
 
-export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
-  { value: '1:1', label: '1:1 Vuông' },
-  { value: '4:5', label: '4:5 Dọc' },
-  { value: '3:4', label: '3:4 Chuẩn' },
-  { value: '2:3', label: '2:3 Cổ Điển' },
-  { value: '9:16', label: '9:16 Story' },
-  { value: '16:9', label: '16:9 Ngang' },
+// UPDATED ASPECT RATIOS for UI Filtering
+// Group 'portrait' = Dọc
+// Group 'landscape' = Ngang
+export const ASPECT_RATIOS: { value: AspectRatio; label: string; group: 'portrait' | 'landscape' | 'both' }[] = [
+  { value: '1:1', label: '1:1 (Vuông)', group: 'both' },
+  { value: '2:3', label: '2:3 (Dọc)', group: 'portrait' },
+  { value: '3:2', label: '3:2 (Ngang)', group: 'landscape' },
+  { value: '9:16', label: '9:16 (Story)', group: 'portrait' },
+  { value: '16:9', label: '16:9 (Youtube)', group: 'landscape' },
 ];
 
 export const VIDEO_ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [

@@ -19,7 +19,8 @@ const BottomHistoryBar: React.FC<BottomHistoryBarProps> = ({
   onClearAll
 }) => {
   return (
-    <div className="h-20 md:h-32 w-full bg-lab-dark/95 backdrop-blur-md border-t border-lab-border flex flex-col shrink-0 z-30 transition-all duration-500 ease-in-out safe-area-bottom">
+    // Height adjusted: h-20 normally, h-16 in landscape, h-32 on tablet/desktop
+    <div className="h-20 landscape:h-16 md:h-32 w-full bg-lab-dark/95 backdrop-blur-md border-t border-lab-border flex flex-col shrink-0 z-30 transition-all duration-500 ease-in-out safe-area-bottom">
       {/* Header of Bar */}
       <div className="px-4 py-1.5 md:py-2 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-2 text-lab-yellow">
@@ -58,7 +59,7 @@ const BottomHistoryBar: React.FC<BottomHistoryBarProps> = ({
             key={img.id}
             onClick={() => onSelectImage(img.id)}
             className={`
-              group relative h-12 w-12 md:h-20 md:w-20 flex-shrink-0 rounded-lg cursor-pointer overflow-hidden border-2 transition-all duration-300 ease-out
+              group relative h-12 w-12 landscape:h-10 landscape:w-10 md:h-20 md:w-20 flex-shrink-0 rounded-lg cursor-pointer overflow-hidden border-2 transition-all duration-300 ease-out
               active:scale-95 md:hover:w-24 md:hover:scale-105 md:hover:shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:z-10
               ${selectedId === img.id 
                 ? 'border-lab-yellow shadow-[0_0_10px_rgba(255,215,0,0.3)] scale-105 w-14 md:w-24' 

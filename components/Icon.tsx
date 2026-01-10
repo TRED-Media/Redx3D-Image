@@ -1,8 +1,9 @@
+
 import React from 'react';
 import { 
   Upload, Image as ImageIcon, History, Download, Settings, 
   Layers, Sun, Camera, Aperture, Type, Check, AlertCircle, X,
-  Wand2, Trash2, Eye, EyeOff, Box
+  Wand2, Trash2, Eye, EyeOff, Box, RectangleVertical, RectangleHorizontal
 } from 'lucide-react';
 
 export const Icons = {
@@ -23,5 +24,7 @@ export const Icons = {
   Trash: Trash2,
   Eye,
   EyeOff,
-  Box
+  Box,
+  Vertical: RectangleVertical,
+  Horizontal: RectangleHorizontal
 };

@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useState } from 'react';
-import { ImageSettings, DEFAULT_SETTINGS, ViewAngle, PhotographyDevice, FilterType, FocalLength } from '../types';
+import { ImageSettings, DEFAULT_SETTINGS, ViewAngle, PhotographyDevice, FilterType, FocalLength, AspectRatio } from '../types';
 import { 
   SCENES, TIMES, MOODS, LIGHTING, PRO_LENSES, MOBILE_LENSES,
   ASPECT_RATIOS, VIDEO_ASPECT_RATIOS, INTERACTIONS, VIDEO_INTERACTIONS, HUMAN_STYLES, VIEW_ANGLES, 
@@ -30,12 +30,34 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
 }) => {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [imgError, setImgError] = useState(false);
+  
+  // State for Aspect Ratio Tab (Vertical vs Horizontal)
+  // Default to portrait unless current settings are explicitly landscape
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(
+    (settings.aspectRatio === '16:9' || settings.aspectRatio === '3:2') ? 'landscape' : 'portrait'
+  );
+
   const isVideoMode = settings.model === 'veo-3.1-fast-generate-preview';
   
   // Logic to determine active lens list
   const hasProfessional = settings.photographyDevice.includes('professional');
   const isOnlyMobile = settings.photographyDevice.includes('mobile') && !hasProfessional;
   const activeLenses = isOnlyMobile ? MOBILE_LENSES : PRO_LENSES;
+
+  // --- CRITICAL CHANGE: STRICT LOCK ---
+  // If Reference Image is present AND Keep Background is ON:
+  // We MUST disable Physics/Lighting/Time controls. 
+  const isRefActive = !!settings.referenceImageUrl;
+  const isStrictRefMode = isRefActive && settings.isKeepRefBackground;
+
+  // Determine if Context Controls should be disabled
+  const isContextDisabled = isStrictRefMode;
+
+  // Logic: Disable Interaction Menus if Custom Prompt is entered
+  const isCustomInteractionActive = !!settings.dualImagePrompt && settings.dualImagePrompt.trim().length > 0;
+
+  // Logic: FORCE HIDE Human Style if Reference Image is uploaded (Input 2)
+  const shouldShowHumanStyle = !isRefActive;
 
   // Effect to reset incompatible settings when switching devices
   useEffect(() => {
@@ -70,6 +92,15 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
       }
     }
   }, [isVideoMode]);
+
+  // Sync orientation state if aspect ratio changes externally (e.g. from default settings)
+  useEffect(() => {
+     if (['16:9', '3:2'].includes(settings.aspectRatio)) {
+         setOrientation('landscape');
+     } else if (['9:16', '2:3', '4:5'].includes(settings.aspectRatio)) {
+         setOrientation('portrait');
+     }
+  }, [settings.aspectRatio]);
 
   const updateField = <K extends keyof ImageSettings>(field: K, value: ImageSettings[K]) => {
     onUpdateSettings({ ...settings, [field]: value });
@@ -161,15 +192,20 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   const activeShotSizes = isVideoMode ? VIDEO_SHOT_SIZES : SHOT_SIZES;
   const activeInteractions = isVideoMode ? VIDEO_INTERACTIONS : INTERACTIONS;
 
+  // Filter Ratios based on Orientation Tab
+  const displayedRatios = isVideoMode 
+    ? VIDEO_ASPECT_RATIOS 
+    : ASPECT_RATIOS.filter(r => r.group === 'both' || r.group === orientation);
+
   return (
-    <div className="w-full md:w-80 h-full bg-lab-dark border-l border-lab-border flex flex-col overflow-hidden relative">
+    <div className="w-full lg:w-80 h-full bg-lab-dark border-l border-lab-border flex flex-col overflow-hidden relative">
       {/* Header */}
       <div className="h-14 shrink-0 border-b border-lab-border flex items-center justify-between px-4 bg-lab-panel">
          <h2 className="font-bold text-sm text-white uppercase tracking-wider">
            {isVideoMode ? 'Thiết Lập Video (Veo)' : 'Bảng Điều Khiển Ảnh'}
          </h2>
          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="md:hidden text-gray-400 hover:text-white p-2 active:bg-white/10 rounded-full">
+            <button onClick={onClose} className="lg:hidden text-gray-400 hover:text-white p-2 active:bg-white/10 rounded-full">
                 <Icons.Close className="w-5 h-5" />
             </button>
          </div>
@@ -180,7 +216,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
         
         {/* --- NEW: MULTI-ANGLE BATCH RENDER SECTION --- */}
         {!isVideoMode && (
-          <section className="bg-lab-panel p-3 rounded border border-lab-border animate-in slide-in-from-top-1">
+          <section className={`bg-lab-panel p-3 rounded border border-lab-border animate-in slide-in-from-top-1 transition-opacity ${isStrictRefMode ? 'opacity-40 pointer-events-none grayscale' : ''}`}>
              <div className="flex items-center justify-between mb-3">
                <div className="flex items-center gap-2 text-lab-yellow">
                  <Icons.Layers className="w-4 h-4" />
@@ -228,7 +264,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
              </div>
              
              <p className="text-[9px] text-gray-400 leading-relaxed px-1">
-               <span className="text-lab-yellow font-bold">Lưu ý:</span> {settings.isColorSync ? 'Hệ thống sẽ KHÓA White Balance để màu sắc đồng nhất.' : 'Màu sắc sẽ thay đổi ngẫu nhiên theo từng góc chụp.'}
+               {isStrictRefMode ? 'Đã tắt khi dùng ảnh mẫu gốc.' : settings.isColorSync ? 'Hệ thống sẽ KHÓA White Balance để màu sắc đồng nhất.' : 'Màu sắc sẽ thay đổi ngẫu nhiên theo từng góc chụp.'}
              </p>
           </section>
         )}
@@ -286,11 +322,14 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
         )}
 
         {/* Scene Selection */}
-        {!settings.isRemoveBackground || isVideoMode ? (
-        <section className="space-y-3 animate-in slide-in-from-top-2">
-          <div className="flex items-center gap-2 text-lab-yellow">
-            <Icons.Image className="w-4 h-4" />
-            <span className="text-xs font-bold uppercase tracking-wider">Bối Cảnh & Tương Tác</span>
+        {/* DISABLE SCENE/CONTEXT IF IN DUAL MODE AND KEEPING BACKGROUND */}
+        <section className={`space-y-3 animate-in slide-in-from-top-2 transition-opacity duration-300 ${isStrictRefMode ? 'opacity-40 pointer-events-none grayscale' : 'opacity-100'}`}>
+          <div className="flex items-center justify-between">
+             <div className="flex items-center gap-2 text-lab-yellow">
+                <Icons.Image className="w-4 h-4" />
+                <span className="text-xs font-bold uppercase tracking-wider">Bối Cảnh & Tương Tác</span>
+             </div>
+             {isStrictRefMode && <span className="text-[8px] text-black bg-lab-yellow px-1 rounded font-bold">LOCKED: DÙNG ẢNH GỐC</span>}
           </div>
           
           <div className="space-y-2">
@@ -300,32 +339,40 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                   className="w-full bg-lab-panel border border-lab-border rounded p-3 md:p-2.5 text-xs text-white focus:border-lab-yellow outline-none appearance-none"
                   value={settings.scene}
                   onChange={(e) => updateField('scene', e.target.value as any)}
+                  disabled={isContextDisabled}
                 >
                   {SCENES.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
             </div>
           </div>
           
-           <div className="space-y-2">
-            <label className="text-xs text-gray-400">Tương Tác {isVideoMode ? '(Motion)' : '(Human)'}</label>
+           {/* INTERACTION MENU: DISABLED IF CUSTOM PROMPT IS ACTIVE OR CONTEXT IS DISABLED */}
+           <div className={`space-y-2 transition-opacity duration-300 ${isCustomInteractionActive ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className="flex justify-between items-center">
+                <label className="text-xs text-gray-400">Tương Tác {isVideoMode ? '(Motion)' : '(Human)'}</label>
+                {isCustomInteractionActive && <span className="text-[8px] text-lab-yellow font-bold">DÙNG MÔ TẢ RIÊNG</span>}
+            </div>
             <div className="relative">
                 <select 
                   className="w-full bg-lab-panel border border-lab-border rounded p-3 md:p-2.5 text-xs text-white focus:border-lab-yellow outline-none appearance-none"
                   value={settings.humanInteraction}
                   onChange={(e) => updateField('humanInteraction', e.target.value as any)}
+                  disabled={isContextDisabled || isCustomInteractionActive}
                 >
                   {activeInteractions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
             </div>
           </div>
 
-          {settings.humanInteraction !== 'none' && (
-             <div className="space-y-2 animate-in slide-in-from-top-1">
+          {/* HUMAN STYLE: HIDDEN IF INPUT 2 (REF IMAGE) IS PRESENT */}
+          {(settings.humanInteraction !== 'none' || isCustomInteractionActive) && shouldShowHumanStyle && (
+             <div className={`space-y-2 animate-in slide-in-from-top-1 ${isCustomInteractionActive ? 'opacity-50 pointer-events-none' : ''}`}>
                 <label className="text-xs text-gray-400">Phong Cách Người Mẫu</label>
                 <select 
                   className="w-full bg-lab-panel border border-lab-border rounded p-3 md:p-2.5 text-xs text-white focus:border-lab-yellow outline-none"
                   value={settings.humanStyle}
                   onChange={(e) => updateField('humanStyle', e.target.value as any)}
+                  disabled={isContextDisabled || isCustomInteractionActive}
                 >
                   {HUMAN_STYLES.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
@@ -340,6 +387,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                    placeholder="Mô tả bối cảnh mong muốn..."
                    value={settings.customScenePrompt || ''}
                    onChange={(e) => updateField('customScenePrompt', e.target.value)}
+                   disabled={isContextDisabled}
                  />
              </div>
           )}
@@ -351,6 +399,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                   className="w-full bg-lab-panel border border-lab-border rounded p-2 text-xs text-white outline-none"
                   value={settings.timeOfDay}
                   onChange={(e) => updateField('timeOfDay', e.target.value as any)}
+                  disabled={isContextDisabled}
                 >
                   {TIMES.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
@@ -361,23 +410,22 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                   className="w-full bg-lab-panel border border-lab-border rounded p-2 text-xs text-white outline-none"
                   value={settings.mood}
                   onChange={(e) => updateField('mood', e.target.value as any)}
+                  disabled={isContextDisabled}
                 >
                   {MOODS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
              </div>
           </div>
         </section>
-        ) : (
-          <div className="p-4 bg-lab-panel rounded border border-lab-border text-center">
-            <p className="text-xs text-gray-400">Chế độ tách nền đang bật.</p>
-          </div>
-        )}
 
         {/* Camera & Lighting */}
-        <section className="space-y-3 pt-4 border-t border-lab-border">
-          <div className="flex items-center gap-2 text-lab-yellow">
-            <Icons.Camera className="w-4 h-4" />
-            <span className="text-xs font-bold uppercase tracking-wider">Quang Học & Ánh Sáng</span>
+        <section className={`space-y-3 pt-4 border-t border-lab-border transition-opacity duration-300 ${isStrictRefMode ? 'opacity-40 pointer-events-none grayscale' : 'opacity-100'}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-lab-yellow">
+              <Icons.Camera className="w-4 h-4" />
+              <span className="text-xs font-bold uppercase tracking-wider">Quang Học & Ánh Sáng</span>
+            </div>
+            {isStrictRefMode && <span className="text-[8px] text-black bg-lab-yellow px-1 rounded font-bold">LOCKED</span>}
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -483,6 +531,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                 className="w-full bg-lab-panel border border-lab-border rounded p-3 md:p-2 text-xs text-white outline-none"
                 value={settings.lighting}
                 onChange={(e) => updateField('lighting', e.target.value as any)}
+                disabled={isContextDisabled}
               >
                 {LIGHTING.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
@@ -501,6 +550,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                      onClick={() => updateField('filter', filter.value)}
                      className={`relative rounded-md overflow-hidden border-2 transition-all active:scale-95 group ${settings.filter === filter.value ? 'border-lab-yellow shadow-md' : 'border-transparent opacity-70 hover:opacity-100 hover:border-gray-600'}`}
                      style={{ aspectRatio: '1/1' }}
+                     disabled={isContextDisabled}
                    >
                      {/* Base Image with CSS Filter or Fallback */}
                      {!imgError ? (
@@ -544,17 +594,62 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
             <span className="text-xs font-bold uppercase tracking-wider">{isVideoMode ? 'Tỉ Lệ Video (Social)' : 'Định Dạng Ảnh'}</span>
           </div>
           
-           <div className="grid grid-cols-3 gap-2">
-            {(isVideoMode ? VIDEO_ASPECT_RATIOS : ASPECT_RATIOS).map(ratio => (
-              <button
-                key={ratio.value}
-                onClick={() => updateField('aspectRatio', ratio.value)}
-                className={`text-[10px] py-2.5 border rounded transition-all touch-manipulation active:scale-95 ${settings.aspectRatio === ratio.value ? 'border-lab-yellow bg-lab-yellow/10 text-lab-yellow' : 'border-lab-border text-gray-400 hover:border-gray-500'}`}
-              >
-                {ratio.label.split(' ')[0]} {/* Show 9:16 instead of full label to fit */}
-              </button>
-            ))}
-           </div>
+           {!isVideoMode ? (
+              // IMAGE FORMAT UI (New Vertical/Horizontal Tabs)
+              <div className="space-y-2">
+                 <div className="grid grid-cols-2 gap-2 bg-black/30 p-1 rounded-lg">
+                    <button 
+                        onClick={() => {
+                            setOrientation('portrait');
+                            // Auto switch to a safe default if current choice is invalid for new tab? 
+                            // Or let the user pick.
+                        }}
+                        className={`flex items-center justify-center gap-2 py-2 rounded text-xs transition-all ${orientation === 'portrait' ? 'bg-lab-panel text-lab-yellow shadow-sm font-bold' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        <Icons.Vertical className="w-4 h-4" />
+                        Dọc (Vertical)
+                    </button>
+                    <button 
+                        onClick={() => setOrientation('landscape')}
+                        className={`flex items-center justify-center gap-2 py-2 rounded text-xs transition-all ${orientation === 'landscape' ? 'bg-lab-panel text-lab-yellow shadow-sm font-bold' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        <Icons.Horizontal className="w-4 h-4" />
+                        Ngang (Horizontal)
+                    </button>
+                 </div>
+                 
+                 <div className="grid grid-cols-3 gap-2">
+                    {displayedRatios.map(ratio => (
+                    <button
+                        key={ratio.value}
+                        onClick={() => updateField('aspectRatio', ratio.value)}
+                        className={`text-[10px] py-2.5 border rounded transition-all touch-manipulation active:scale-95 flex flex-col items-center justify-center gap-0.5
+                        ${settings.aspectRatio === ratio.value 
+                            ? 'border-lab-yellow bg-lab-yellow/10 text-lab-yellow font-bold' 
+                            : 'border-lab-border text-gray-400 hover:border-gray-500'
+                        }`}
+                    >
+                        <span>{ratio.value}</span>
+                        {/* Short label logic for mobile fit */}
+                        <span className="text-[8px] font-normal opacity-70 scale-90">{ratio.label.split('(')[1]?.replace(')', '') || ratio.label}</span>
+                    </button>
+                    ))}
+                 </div>
+              </div>
+           ) : (
+              // VIDEO FORMAT UI
+              <div className="grid grid-cols-3 gap-2">
+                {displayedRatios.map(ratio => (
+                <button
+                    key={ratio.value}
+                    onClick={() => updateField('aspectRatio', ratio.value)}
+                    className={`text-[10px] py-2.5 border rounded transition-all touch-manipulation active:scale-95 ${settings.aspectRatio === ratio.value ? 'border-lab-yellow bg-lab-yellow/10 text-lab-yellow' : 'border-lab-border text-gray-400 hover:border-gray-500'}`}
+                >
+                    {ratio.label.split(' ')[0]}
+                </button>
+                ))}
+              </div>
+           )}
            
            {!isVideoMode && (
              <div className={`pt-2 transition-opacity ${settings.model === 'gemini-3-pro-image-preview' ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
@@ -569,7 +664,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                   <div className="flex flex-col">
                     <span className="text-xs font-bold text-lab-yellow">Xuất 4K (High Res)</span>
                     <span className="text-[9px] text-gray-500">
-                      {settings.model === 'gemini-3-pro-image-preview' ? 'Dành riêng cho Banana 2 (Pro)' : 'Chỉ khả dụng trên Banana 2 (Pro)'}
+                      {settings.model === 'gemini-3-pro-image-preview' ? 'Giá 2026: x2 Chi Phí (FullHD: x1)' : 'Chỉ khả dụng trên Banana 2 (Pro)'}
                     </span>
                   </div>
                 </label>
@@ -635,7 +730,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
 
       </div>
 
-      <div className="p-4 border-t border-lab-border bg-lab-panel absolute bottom-0 left-0 right-0 z-10 md:static safe-area-bottom">
+      <div className="p-4 border-t border-lab-border bg-lab-panel absolute bottom-0 left-0 right-0 z-10 lg:static safe-area-bottom">
         <button
           onClick={onGenerate}
           disabled={!canGenerate || isProcessing}

@@ -1,4 +1,5 @@
 
+
 export interface ProcessedImage {
   id: string;
   originalUrl: string;
@@ -38,7 +39,8 @@ export interface ProjectStats {
 
 export type AIModelId = 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' | 'veo-3.1-fast-generate-preview';
 
-export type AspectRatio = '1:1' | '4:5' | '3:4' | '2:3' | '9:16' | '16:9';
+// Updated AspectRatio type to support 3:2 (Landscape of 2:3)
+export type AspectRatio = '1:1' | '2:3' | '3:2' | '9:16' | '16:9';
 
 export type SceneType = 
   // Tech / Creator Gear
@@ -78,6 +80,11 @@ export interface ImageSettings {
   isSyncBackground: boolean;
   isColorSync: boolean; // NEW: Controls White Balance consistency across batch
   
+  // --- NEW: DUAL IMAGE MODE FIELDS ---
+  referenceImageUrl?: string; // The 2nd image (Person/Context)
+  dualImagePrompt?: string;   // Interaction description
+  isKeepRefBackground: boolean; // NEW: Toggle to freeze background/lighting from Ref Image
+  
   timeOfDay: TimeOfDay;
   mood: Mood;
   lighting: Lighting;
@@ -104,7 +111,7 @@ export interface ImageSettings {
 }
 
 export const DEFAULT_SETTINGS: ImageSettings = {
-  model: 'gemini-2.5-flash-image', 
+  model: 'gemini-3-pro-image-preview', // Default to Pro Model for better quality
   productDescription: '',
   scene: 'tech_desk', 
   isRemoveBackground: false,
@@ -132,5 +139,10 @@ export const DEFAULT_SETTINGS: ImageSettings = {
   videoPrompt: '',
   videoDuration: 5,
   hasVoice: false,
-  filter: 'natural'
+  filter: 'natural',
+  
+  // Dual Mode Defaults
+  referenceImageUrl: undefined,
+  dualImagePrompt: '',
+  isKeepRefBackground: true // Default to keeping the reference background
 };

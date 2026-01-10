@@ -26,6 +26,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onResetStats
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const refImageInputRef = useRef<HTMLInputElement>(null); // New Ref for Reference Image
   const [showBreakdown, setShowBreakdown] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -33,6 +34,34 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
       onUpload(e.target.files);
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Handle Reference Image Upload (Convert to Base64 and store in settings)
+  // FIXED: Batched update to prevent race conditions
+  const handleRefImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+         onUpdateSettings({
+            ...settings,
+            referenceImageUrl: reader.result as string,
+            isKeepRefBackground: true // Default to keeping background
+         });
+      };
+      reader.readAsDataURL(file);
+    }
+    if (refImageInputRef.current) refImageInputRef.current.value = '';
+  };
+
+  // FIXED: Batched update
+  const removeRefImage = () => {
+    onUpdateSettings({
+        ...settings,
+        referenceImageUrl: undefined,
+        dualImagePrompt: '',
+        isKeepRefBackground: true
+    });
   };
 
   const updateField = <K extends keyof ImageSettings>(field: K, value: ImageSettings[K]) => {
@@ -53,20 +82,20 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const currentEst = PRICING_CONFIG.calculateEstimatedCost(settings);
 
   return (
-    <div className="w-full h-full bg-lab-dark border-r border-lab-border flex flex-col z-20 shadow-xl relative md:w-72 font-sans">
-      {/* Mobile Close Button - Larger touch target */}
+    <div className="w-full h-full bg-lab-dark border-r border-lab-border flex flex-col z-20 shadow-xl relative lg:w-80 font-sans">
+      {/* Mobile/Tablet Close Button - Hidden on LG+ */}
       <button 
         onClick={onClose}
-        className="md:hidden absolute top-2 right-2 text-gray-400 hover:text-white z-50 p-3 active:bg-white/10 rounded-full transition-colors"
+        className="lg:hidden absolute top-2 right-2 text-gray-400 hover:text-white z-50 p-3 active:bg-white/10 rounded-full transition-colors"
       >
         <Icons.Close className="w-5 h-5" />
       </button>
 
-      {/* Header - Logo Area */}
-      <div className="h-14 shrink-0 border-b border-lab-border flex flex-row gap-3 items-center justify-start px-4 bg-lab-panel">
-        <div className="relative w-8 h-8 flex-shrink-0 group cursor-default">
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-[0_0_10px_rgba(255,215,0,0.3)]">
-            <rect width="100" height="100" rx="15" fill="#FFD700" />
+      {/* Header - Logo Area - ENHANCED SIZE AND STYLE */}
+      <div className="h-24 landscape:h-16 md:h-28 shrink-0 border-b border-lab-border flex flex-row gap-4 items-center justify-center px-4 bg-gradient-to-b from-lab-panel to-lab-dark shadow-sm">
+        <div className="relative w-12 h-12 landscape:w-10 landscape:h-10 md:w-14 md:h-14 flex-shrink-0 group cursor-default">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-[0_0_15px_rgba(255,215,0,0.4)] transition-transform group-hover:scale-105 duration-500">
+            <rect width="100" height="100" rx="20" fill="#FFD700" />
             <path 
               fill="#000000"
               d="M30 25 L70 25 L80 35 L80 45 L65 45 L65 55 L80 55 L80 75 L50 75 L40 65 L40 55 L30 55 Z"
@@ -75,8 +104,8 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
         </div>
         
         <div className="flex flex-col items-start justify-center">
-          <span className="text-lab-yellow font-bold text-sm leading-none tracking-widest">REDx</span>
-          <span className="text-white font-bold text-[10px] leading-none tracking-wider opacity-80">DESIGN LAB</span>
+          <span className="text-lab-yellow font-black text-2xl landscape:text-xl md:text-3xl leading-none tracking-widest drop-shadow-md">REDx</span>
+          <span className="text-white font-bold text-[10px] md:text-xs leading-none tracking-[0.25em] opacity-80 mt-1 pl-0.5">DESIGN LAB</span>
         </div>
       </div>
 
@@ -86,12 +115,15 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {/* Upload Button */}
         <div 
           onClick={() => fileInputRef.current?.click()}
-          className="w-full h-24 border-2 border-dashed border-lab-border hover:border-lab-yellow hover:bg-lab-panel/50 transition-all duration-300 cursor-pointer rounded-xl flex flex-col items-center justify-center gap-2 group relative overflow-hidden active:scale-95 shrink-0"
+          className="w-full h-28 landscape:h-20 border-2 border-dashed border-lab-border hover:border-lab-yellow hover:bg-lab-panel/50 transition-all duration-300 cursor-pointer rounded-xl flex flex-col items-center justify-center gap-3 group relative overflow-hidden active:scale-95 shrink-0 shadow-lg"
         >
           <div className="absolute inset-0 bg-gradient-to-tr from-lab-yellow/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <Icons.Upload className="w-6 h-6 text-lab-muted group-hover:text-lab-yellow transition-colors" />
+          <div className="p-3 bg-lab-panel rounded-full group-hover:bg-lab-yellow group-hover:text-black transition-colors duration-300">
+             <Icons.Upload className="w-6 h-6 text-lab-muted group-hover:text-black" />
+          </div>
           <div className="text-center relative z-10">
-            <p className="text-xs font-bold text-gray-400 group-hover:text-white transition-colors">Tải Ảnh Lên</p>
+            <p className="text-xs font-bold text-gray-300 group-hover:text-white transition-colors uppercase tracking-wide">Tải Ảnh Sản Phẩm</p>
+            <p className="text-[9px] text-gray-500 mt-0.5">(Input 1 - Master Asset)</p>
           </div>
         </div>
 
@@ -106,19 +138,82 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <button
                   key={model.value}
                   onClick={() => updateModel(model.value)}
-                  className={`flex flex-col items-start p-3 md:p-2 rounded border transition-all active:scale-[0.98] ${settings.model === model.value ? 'bg-lab-yellow/10 border-lab-yellow' : 'bg-lab-panel border-lab-border hover:border-gray-500'}`}
+                  className={`flex flex-col items-start p-3 md:p-3 rounded border transition-all active:scale-[0.98] shadow-sm ${settings.model === model.value ? 'bg-lab-yellow/10 border-lab-yellow ring-1 ring-lab-yellow/20' : 'bg-lab-panel border-lab-border hover:border-gray-500'}`}
                 >
                   <div className="flex items-center justify-between w-full">
                      <span className={`text-xs font-bold ${settings.model === model.value ? 'text-lab-yellow' : 'text-gray-300'}`}>
                        {model.label}
                      </span>
-                     {settings.model === model.value && <div className="w-2 h-2 rounded-full bg-lab-yellow" />}
+                     {settings.model === model.value && <div className="w-2 h-2 rounded-full bg-lab-yellow shadow-[0_0_8px_rgba(255,215,0,0.8)]" />}
                   </div>
-                  <span className="text-[9px] text-gray-500 mt-1 text-left">{model.desc}</span>
+                  <span className="text-[10px] text-gray-500 mt-1 text-left leading-tight">{model.desc}</span>
                 </button>
               ))}
            </div>
         </div>
+
+        {/* --- NEW SECTION: DUAL IMAGE INPUT (REFERENCE) --- */}
+        <div className="space-y-2 animate-in slide-in-from-left-2 duration-300 bg-lab-panel/50 p-3 rounded-lg border border-lab-border/50">
+            <div className="flex items-center justify-between text-lab-yellow">
+                <div className="flex items-center gap-2">
+                    <Icons.Layers className="w-3 h-3" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Hợp nhất 2 ảnh (Input 2)</span>
+                </div>
+                {settings.referenceImageUrl && (
+                    <button onClick={removeRefImage} className="text-[9px] text-red-400 hover:text-white underline">Xóa</button>
+                )}
+            </div>
+
+            {!settings.referenceImageUrl ? (
+                <div 
+                    onClick={() => refImageInputRef.current?.click()}
+                    className="w-full h-16 border border-dashed border-gray-600 hover:border-lab-yellow hover:bg-lab-panel transition-all cursor-pointer rounded flex items-center justify-center gap-2"
+                >
+                    <Icons.Image className="w-4 h-4 text-gray-500" />
+                    <span className="text-[10px] text-gray-400">Chọn ảnh Người / Mẫu (Tùy chọn)</span>
+                </div>
+            ) : (
+                <>
+                <div className="relative w-full h-24 rounded overflow-hidden border border-lab-yellow group">
+                     <img src={settings.referenceImageUrl} alt="Reference" className="w-full h-full object-cover opacity-80" />
+                     <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-1 text-center">
+                        <span className="text-[9px] text-white font-bold">Input 2: Người dùng</span>
+                     </div>
+                </div>
+
+                {/* --- NEW: KEEP BACKGROUND TOGGLE --- */}
+                <div className="flex items-center justify-between pt-2 border-t border-white/10 mt-2">
+                     <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-gray-200">Giữ nguyên Bối Cảnh</span>
+                        <span className="text-[8px] text-gray-500">{settings.isKeepRefBackground ? 'Đóng băng menu Bối cảnh/Sáng' : 'Thay nền mới & Relight'}</span>
+                     </div>
+                     <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            className="sr-only peer" 
+                            checked={settings.isKeepRefBackground} 
+                            onChange={(e) => updateField('isKeepRefBackground', e.target.checked)} 
+                        />
+                        <div className="w-7 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-lab-yellow"></div>
+                    </label>
+                </div>
+                </>
+            )}
+            
+            {/* Interaction Prompt - Only visible if Ref Image is present */}
+            {settings.referenceImageUrl && (
+                <div className="space-y-1 pt-2 animate-in slide-in-from-top-2">
+                    <label className="text-[10px] text-gray-400 uppercase font-bold">Mô tả tương tác (Prompt):</label>
+                    <textarea 
+                        className="w-full bg-black border border-lab-yellow/50 rounded p-2 text-xs text-white focus:border-lab-yellow outline-none h-16 resize-none placeholder-gray-600"
+                        placeholder="Vd: Người đang cầm sản phẩm trên tay trái, ngón tay cái đặt nhẹ lên nắp..."
+                        value={settings.dualImagePrompt || ''}
+                        onChange={(e) => updateField('dualImagePrompt', e.target.value)}
+                    />
+                </div>
+            )}
+        </div>
+        {/* ------------------------------------------------- */}
 
         {/* 2. Variant Menu */}
         <div className="space-y-2 animate-in slide-in-from-left-2 duration-300">
@@ -143,7 +238,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
         <div className="space-y-2 animate-in slide-in-from-left-3 duration-300">
           <div className="flex items-center gap-2 text-lab-yellow">
              <Icons.Check className="w-3 h-3" />
-             <span className="text-[10px] font-bold uppercase tracking-wider">Chi Tiết Sản Phẩm</span>
+             <span className="text-[10px] font-bold uppercase tracking-wider">Chi Tiết Sản Phẩm (Input 1)</span>
           </div>
           <textarea 
             className="w-full bg-lab-panel border border-lab-border rounded p-3 text-xs text-white focus:border-lab-yellow outline-none h-20 resize-none placeholder-gray-600 leading-relaxed font-sans"
@@ -155,7 +250,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
         {/* 4. Background Removal */}
         {settings.model !== 'veo-3.1-fast-generate-preview' && (
-          <div className="bg-lab-panel p-3 rounded border border-lab-border flex items-center justify-between animate-in slide-in-from-left-4 duration-300 active:bg-lab-panel/80">
+          <div className={`bg-lab-panel p-3 rounded border border-lab-border flex items-center justify-between animate-in slide-in-from-left-4 duration-300 active:bg-lab-panel/80 transition-opacity ${settings.referenceImageUrl && settings.isKeepRefBackground ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
             <div className="flex items-center gap-2 text-white">
                 <Icons.EyeOff className="w-3 h-3 text-lab-yellow" />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Chỉ Tách Nền Trắng</span>
@@ -165,7 +260,9 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   type="checkbox" 
                   className="sr-only peer" 
                   checked={settings.isRemoveBackground} 
-                  onChange={(e) => updateField('isRemoveBackground', e.target.checked)} 
+                  onChange={(e) => updateField('isRemoveBackground', e.target.checked)}
+                  // Disable if Keep Ref Background is ON, as they conflict logic-wise
+                  disabled={!!settings.referenceImageUrl && settings.isKeepRefBackground} 
               />
               <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-lab-yellow"></div>
             </label>
@@ -264,6 +361,14 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
         className="hidden" 
         ref={fileInputRef}
         onChange={handleFileChange}
+      />
+      {/* Hidden Ref Image Input */}
+      <input 
+        type="file" 
+        accept="image/png, image/jpeg, image/jpg"
+        className="hidden" 
+        ref={refImageInputRef}
+        onChange={handleRefImageChange}
       />
     </div>
   );

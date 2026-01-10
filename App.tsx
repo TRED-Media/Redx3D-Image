@@ -341,14 +341,16 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-screen w-screen bg-black text-white font-sans overflow-hidden">
+    // LG Breakpoint forces Tablet Portrait to behave like Mobile (Col stack)
+    // Landscape Mobile will benefit from compact vertical styling
+    <div className="flex flex-col lg:flex-row h-screen w-screen bg-black text-white font-sans overflow-hidden">
       
-      {/* Mobile Header */}
-      <div className="md:hidden h-14 bg-lab-dark border-b border-lab-border flex items-center justify-between px-3 z-40 shrink-0 shadow-md">
+      {/* Mobile/Tablet Header - Optimized height for Landscape */}
+      <div className="lg:hidden h-14 landscape:h-12 bg-lab-dark border-b border-lab-border flex items-center justify-between px-3 z-40 shrink-0 shadow-md">
          <button onClick={() => setIsLeftOpen(true)} className="p-2 -ml-2 text-lab-yellow active:scale-95 transition-transform"><Icons.Layers className="w-6 h-6" /></button>
          <div className="flex items-center gap-1.5">
             <div className="w-5 h-5 bg-lab-yellow rounded flex items-center justify-center"><span className="text-black font-bold text-[10px]">R</span></div>
-            <span className="text-white text-xs font-bold tracking-wider">REDx 3D</span>
+            <span className="text-white text-xs font-bold tracking-wider uppercase">REDx 3D Lab</span>
          </div>
          <button onClick={() => setIsRightOpen(true)} className="p-2 -mr-2 text-lab-yellow relative active:scale-95 transition-transform">
             <Icons.Settings className="w-6 h-6" />
@@ -361,13 +363,13 @@ const App: React.FC = () => {
       {/* Mobile Backdrop */}
       {(isLeftOpen || isRightOpen) && (
         <div 
-          className="fixed inset-0 bg-black/80 z-40 md:hidden backdrop-blur-sm transition-opacity animate-in fade-in" 
+          className="fixed inset-0 bg-black/80 z-40 lg:hidden backdrop-blur-sm transition-opacity animate-in fade-in" 
           onClick={() => { setIsLeftOpen(false); setIsRightOpen(false); }} 
         />
       )}
 
       {/* Left Sidebar Drawer */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-[85%] sm:w-80 transform transition-transform duration-300 ease-out md:relative md:translate-x-0 md:w-auto shadow-2xl ${isLeftOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className={`fixed inset-y-0 left-0 z-50 w-[85%] sm:w-80 md:w-80 lg:w-80 transform transition-transform duration-300 ease-out lg:relative lg:translate-x-0 shadow-2xl ${isLeftOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <LeftSidebar 
           history={history} onUpload={handleUpload} onSelectImage={setSelectedId} selectedId={selectedId} onDelete={handleDelete} onClose={() => setIsLeftOpen(false)} 
           projectStats={lifetimeStats} // PASS LIFETIME STATS HERE
@@ -388,8 +390,8 @@ const App: React.FC = () => {
           </div>
           
           <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none w-full justify-center">
-             <h1 className="hidden md:flex items-center gap-2 text-sm font-bold tracking-tight text-white uppercase opacity-80">
-                Thay nền sản phẩm cùng <span className="text-lab-yellow">REDx 3D Lab</span>
+             <h1 className="hidden md:flex items-center gap-2 text-sm lg:text-base font-bold tracking-tight text-white uppercase opacity-90 drop-shadow-sm">
+                Xử lí ảnh sản phẩm cùng <span className="text-lab-yellow">REDx 3D Lab</span>
              </h1>
           </div>
 
@@ -419,15 +421,55 @@ const App: React.FC = () => {
         </div>
 
         {/* Canvas Area */}
-        <div className="flex-1 flex flex-col items-center justify-center p-2 md:p-6 overflow-hidden relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1a1a1a] to-black">
+        <div className="flex-1 flex flex-col items-center justify-center p-2 md:p-6 lg:p-10 overflow-hidden relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1a1a1a] to-black">
           <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#333 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
 
           {!selectedImage ? (
-            <div className="text-center text-lab-muted animate-in fade-in zoom-in duration-500 px-6">
-              <div className="w-16 h-16 md:w-24 md:h-24 mx-auto mb-4 rounded-full bg-lab-panel flex items-center justify-center border border-lab-border shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-                <Icons.Image className="w-8 h-8 md:w-10 md:h-10 opacity-30" />
+            // --- REDESIGNED HERO BANNER (Massive & Eye-Catching) ---
+            // Added landscape optimizations (less padding, smaller scale)
+            <div className="text-center animate-in fade-in zoom-in duration-500 w-full max-w-4xl px-6 z-10">
+              <div className="bg-black/30 border border-lab-border/30 backdrop-blur-sm p-8 md:p-16 landscape:p-6 landscape:gap-4 rounded-3xl shadow-[0_0_80px_rgba(0,0,0,0.6)] flex flex-col items-center gap-8 md:gap-10">
+                  
+                  {/* Huge Icon Container - Smaller in landscape */}
+                  <div className="relative group">
+                     <div className="absolute inset-0 bg-lab-yellow blur-[50px] opacity-20 group-hover:opacity-40 transition-opacity duration-1000 rounded-full"></div>
+                     <div className="relative w-24 h-24 md:w-36 md:h-36 landscape:w-20 landscape:h-20 rounded-[2rem] bg-gradient-to-tr from-[#1a1a1a] to-[#2a2a2a] flex items-center justify-center border border-white/10 shadow-2xl group-hover:scale-105 transition-transform duration-500">
+                        <Icons.Image className="w-12 h-12 md:w-20 md:h-20 landscape:w-10 landscape:h-10 text-lab-yellow drop-shadow-[0_0_15px_rgba(255,215,0,0.6)]" />
+                     </div>
+                  </div>
+                  
+                  <div className="space-y-4 landscape:space-y-2">
+                     <h2 className="text-lg md:text-2xl font-bold uppercase tracking-[0.2em] text-gray-500">
+                        Welcome to
+                     </h2>
+                     {/* Massive Title - Smaller in landscape */}
+                     <div className="flex flex-col items-center leading-none">
+                         <h1 className="text-4xl md:text-7xl lg:text-8xl landscape:text-5xl font-black uppercase tracking-tighter text-white drop-shadow-2xl">
+                            REDx
+                         </h1>
+                         <h1 className="text-4xl md:text-7xl lg:text-8xl landscape:text-5xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-lab-yellow via-yellow-200 to-yellow-600 drop-shadow-[0_0_30px_rgba(255,215,0,0.3)]">
+                            3D LAB
+                         </h1>
+                     </div>
+                     <p className="text-sm md:text-lg text-gray-400 font-light tracking-wide max-w-lg mx-auto leading-relaxed pt-4 border-t border-white/5 mt-6 landscape:mt-4">
+                        Studio nhiếp ảnh AI chuyên nghiệp. <br className="hidden md:block"/>
+                        Tải ảnh lên menu bên trái để bắt đầu.
+                     </p>
+                  </div>
+                  
+                  {/* Feature Pills */}
+                  <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4">
+                      <span className="px-4 py-2 bg-white/5 rounded-full border border-white/10 text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-300 flex items-center gap-2">
+                        <Icons.Check className="w-3 h-3 text-lab-yellow" /> 4K Ultra HD
+                      </span>
+                      <span className="px-4 py-2 bg-white/5 rounded-full border border-white/10 text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-300 flex items-center gap-2">
+                        <Icons.Check className="w-3 h-3 text-lab-yellow" /> Pro Lighting
+                      </span>
+                      <span className="px-4 py-2 bg-white/5 rounded-full border border-white/10 text-[10px] md:text-xs font-bold uppercase tracking-widest text-gray-300 flex items-center gap-2">
+                        <Icons.Check className="w-3 h-3 text-lab-yellow" /> Gemini 2026
+                      </span>
+                  </div>
               </div>
-              <p className="text-xs md:text-sm font-light tracking-wide uppercase"><span className="md:hidden">Nhấn menu trái để tải ảnh</span><span className="hidden md:inline">Chọn hoặc tải ảnh lên để bắt đầu</span></p>
             </div>
           ) : (
             <div className="relative w-full h-full flex items-center justify-center animate-in fade-in duration-500">
@@ -443,13 +485,14 @@ const App: React.FC = () => {
                   className="relative flex items-center justify-center max-w-full max-h-full transition-all duration-500 ease-out group"
                 >
                   {/* DISPLAY LOGIC: Video vs Image */}
+                  {/* Added landscape max-h optimization */}
                   {selectedImage.isVideo && selectedImage.processedUrl ? (
                       <video 
                         src={selectedImage.processedUrl} 
                         controls 
                         autoPlay 
                         loop
-                        className="max-w-full w-auto h-auto shadow-2xl max-h-[calc(100vh-160px)] md:max-h-[calc(100vh-180px)] rounded-lg border border-lab-border"
+                        className="max-w-full w-auto h-auto shadow-2xl max-h-[calc(100vh-160px)] md:max-h-[calc(100vh-180px)] landscape:max-h-[calc(100vh-120px)] rounded-lg border border-lab-border"
                       />
                   ) : (
                       <img 
@@ -457,7 +500,7 @@ const App: React.FC = () => {
                           alt="Workplace" 
                           className={`
                               max-w-full w-auto h-auto object-contain shadow-2xl
-                              max-h-[calc(100vh-160px)] md:max-h-[calc(100vh-180px)]
+                              max-h-[calc(100vh-160px)] md:max-h-[calc(100vh-180px)] landscape:max-h-[calc(100vh-120px)]
                               ${selectedImage.status === 'processing' ? 'opacity-50 blur-sm scale-95' : 'scale-100'} 
                               transition-all duration-700
                           `} 
@@ -511,8 +554,8 @@ const App: React.FC = () => {
         />
       </main>
 
-      {/* Right Sidebar Drawer */}
-      <div className={`fixed inset-y-0 right-0 z-50 w-[85%] sm:w-80 transform transition-transform duration-300 ease-out md:relative md:translate-x-0 md:w-auto shadow-2xl ${isRightOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      {/* Right Sidebar Drawer - Drawer on Tablet/Mobile, Static on Desktop (LG+) */}
+      <div className={`fixed inset-y-0 right-0 z-50 w-[85%] sm:w-80 md:w-80 lg:w-80 transform transition-transform duration-300 ease-out lg:relative lg:translate-x-0 shadow-2xl ${isRightOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <RightSidebar settings={settings} onUpdateSettings={setSettings} onGenerate={handleGenerateClick} isProcessing={isProcessing} canGenerate={!!selectedImage && selectedImage.status !== 'processing'} onClose={() => setIsRightOpen(false)} />
       </div>
 
